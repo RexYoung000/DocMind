@@ -14,7 +14,8 @@ import { chatCompletion, LLMError } from '@/services/llmService'
 import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createId } from '@/utils/id'
-import type { Agent, AgentTemplate, AgentColor, AgentCategory } from '@/types'
+import type { Agent, AgentTemplate, AgentColor, AgentCategory, ReviewDimension } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 
 const TEMPLATE_GROUPS: { label: string; icon: string; ids: string[] }[] = [
   { label: '教研老师', icon: '📐', ids: ['tpl-edu-1', 'tpl-edu-2', 'tpl-edu-3', 'tpl-edu-4', 'tpl-edu-5', 'tpl-edu-6'] },
@@ -92,7 +93,7 @@ function parseAgentMD(md: string): Partial<Agent> | null {
     tagline: getStr('tagline'),
     color: ALL_COLORS.includes(colorVal as AgentColor) ? (colorVal as AgentColor) : 'indigo',
     category: ['analyst', 'engineer', 'creative'].includes(categoryVal) ? (categoryVal as AgentCategory) : undefined,
-    focusDimension: getStr('focusDimension') || undefined,
+    focusDimension: (REVIEW_DIMENSIONS as readonly string[]).includes(getStr('focusDimension')) ? (getStr('focusDimension') as ReviewDimension) : undefined,
     source: (getStr('source') === 'template' ? 'template' : 'custom') as Agent['source'],
     expertise,
     personality: {
@@ -273,7 +274,7 @@ function AgentManageCard({ agent, onEdit, onDelete, onExport, onImport }: {
         {isOfficial ? '来自模板' : agent.source === 'custom' ? '自定义创建' : '社区'}
         {' · '}已使用 {agent.usage_count} 次
         {agent.category && (
-          <> · {{ teacher: '教研老师', student: '学生', parent: '家长' }[agent.category]}</>
+          <> · {{ analyst: '分析师', engineer: '工程师', creative: '创意' }[agent.category]}</>
         )}
       </p>
       <div className="flex gap-2 border-t border-gray-100 pt-3">

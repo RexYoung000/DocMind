@@ -89,9 +89,12 @@ export async function generateAgentResponse(
 
   let reply = ''
   await chatCompletion(
-    systemPrompt,
-    chatHistory,
-    (text) => { reply = text },
+    [{ role: 'system', content: systemPrompt }, ...chatHistory],
+    {
+      onChunk: (chunk) => { reply += chunk },
+      onDone: (text) => { reply = text },
+      onError: () => {},
+    },
     signal,
   )
 

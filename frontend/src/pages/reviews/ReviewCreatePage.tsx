@@ -170,7 +170,7 @@ export default function ReviewCreatePage() {
           selectedDoc,
           (text) => setProgress((previous) => ({
             ...previous,
-            [agent.id]: { status: 'reviewing', text },
+            [agent.id]: { status: 'reviewing', text, dimensionsCompleted: previous[agent.id]?.dimensionsCompleted ?? 0 },
           })),
           abortRef.current!.signal,
         )
