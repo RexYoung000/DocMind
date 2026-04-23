@@ -25,9 +25,9 @@ const TEMPLATE_GROUPS: { label: string; icon: string; ids: string[] }[] = [
 const ALL_COLORS: AgentColor[] = ['indigo', 'violet', 'pink', 'orange', 'teal', 'sky', 'slate', 'green', 'rose', 'amber', 'emerald', 'cyan']
 
 const CATEGORY_OPTIONS: { value: AgentCategory; label: string; icon: string }[] = [
-  { value: 'teacher', label: '教研老师', icon: '👨‍🏫' },
-  { value: 'student', label: '学生', icon: '🎒' },
-  { value: 'parent', label: '家长', icon: '👨‍👩‍👧' },
+  { value: 'analyst', label: '分析师', icon: '📊' },
+  { value: 'engineer', label: '工程师', icon: '⚙️' },
+  { value: 'creative', label: '创意', icon: '🎨' },
 ]
 
 // === MD Import/Export ===
@@ -91,7 +91,7 @@ function parseAgentMD(md: string): Partial<Agent> | null {
     avatar: getStr('avatar'),
     tagline: getStr('tagline'),
     color: ALL_COLORS.includes(colorVal as AgentColor) ? (colorVal as AgentColor) : 'indigo',
-    category: ['teacher', 'student', 'parent'].includes(categoryVal) ? (categoryVal as AgentCategory) : undefined,
+    category: ['analyst', 'engineer', 'creative'].includes(categoryVal) ? (categoryVal as AgentCategory) : undefined,
     focusDimension: getStr('focusDimension') || undefined,
     source: (getStr('source') === 'template' ? 'template' : 'custom') as Agent['source'],
     expertise,
@@ -531,7 +531,7 @@ function CustomAddModal({ onClose, onSaved, embedded }: { onClose: () => void; o
   const [tagline, setTagline] = useState('')
   const [avatar, setAvatar] = useState('')
   const [color, setColor] = useState<AgentColor>('indigo')
-  const [category, setCategory] = useState<AgentCategory>('teacher')
+  const [category, setCategory] = useState<AgentCategory>('analyst')
   const [expertise, setExpertise] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [style, setStyle] = useState('')
@@ -840,7 +840,7 @@ function AICreateModal({ onClose, onSaved, embedded }: { onClose: () => void; on
       const previewData = {
         name: parsed.name, avatar: parsed.avatar || '🤖', tagline: parsed.tagline || '',
         color: validColor as AgentColor,
-        category: (['teacher', 'student', 'parent'].includes(parsed.category) ? parsed.category : 'teacher') as AgentCategory,
+        category: (['analyst', 'engineer', 'creative'].includes(parsed.category) ? parsed.category : 'analyst') as AgentCategory,
         focusDimension: parsed.focusDimension || undefined,
         personality: {
           directness: Math.min(5, Math.max(1, parsed.personality?.directness || 3)),

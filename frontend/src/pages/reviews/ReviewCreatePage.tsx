@@ -10,7 +10,7 @@ import { isModelConfigValid, useSettingsStore } from '@/stores/settingsStore'
 import { createFailedAgentReview, executeAgentReview, generateSummary } from '@/services/reviewEngine'
 import { toast } from '@/components/ui/Toast'
 import { createId } from '@/utils/id'
-import { TEACHING_DIMENSIONS } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 import type { AgentReview, Review } from '@/types'
 
 const KAOMOJIS = [
@@ -46,7 +46,7 @@ function DimensionProgress({ completed }: { completed: number }) {
 
   return (
     <div className="space-y-1 rounded-lg bg-gray-50 px-3 py-2.5 font-mono text-xs">
-      {TEACHING_DIMENSIONS.map((dim, i) => {
+      {REVIEW_DIMENSIONS.map((dim, i) => {
         const meta = DIMENSION_META[i]
         const isDone = i < completed
         const isActive = i === completed

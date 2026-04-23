@@ -1,42 +1,42 @@
 import type { Agent, AgentColor, Document, AgentReview, Suggestion, ReviewSummary } from '@/types'
-import { TEACHING_DIMENSIONS } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 import { chatCompletion } from './llmService'
 import { createId } from '@/utils/id'
 
 const REVIEW_SYSTEM_PROMPT = (agent: Agent) => `${agent.system_prompt}
 
-你现在正在执行教研案评审任务。你必须严格从【${agent.name}】的角色视角出发，提出独特、有深度的见解，避免与其他评审者雷同的泛泛评价。
+你现在正在执行文档评审任务。你必须严格从【${agent.name}】的角色视角出发，提出独特、有深度的见解，避免与其他评审者雷同的泛泛评价。
 
 ## 评审要求
-1. **引用原文**：在 comment、suggestion 和 opinion 中，针对具体问题或亮点时，必须引用教研案的原文片段（格式：（原文：「xxx」）），让老师知道你在评价哪里。
-2. **深度分析**：不要停留在表面，要找到问题背后的原因，以及改进后对学生学习的实际影响。
+1. **引用原文**：在 comment、suggestion 和 opinion 中，针对具体问题或亮点时，必须引用原文片段（格式：（原文：「xxx」）），让作者知道你在评价哪里。
+2. **深度分析**：不要停留在表面，要找到问题背后的原因，以及改进后的实际影响。
 3. **建议数量**：提供 3-8 条建议，且每条建议必须包含"问题定位 → 改进方案 → 参考方向"三部分，禁止空话和泛泛而谈。
-4. **优先级含义**：high = 直接影响学生理解和学习效果；medium = 影响教学质量但非致命；low = 锦上添花的优化。
+4. **优先级含义**：high = 直接影响文档核心质量；medium = 影响整体质量但非致命；low = 锦上添花的优化。
 5. **亮点发现**：即便文档有明显不足，也必须找到 1-3 个真正出彩的地方，客观平衡评价。
 
 请严格按以下 JSON 格式输出，仅输出 JSON，不得有任何其他内容：
 {
   "status_message": "一句俏皮有趣的角色独白，用【${agent.name}】的语气描述刚才的评审心得（2-3句，有个性，有角色感）",
   "score": 4.2,
-  "opinion": "【总体印象】1-2句整体感受，带角色视角。\n\n【最大亮点】1-2句，说明哪里做得最好，引用原文。\n\n【核心问题】1-2句，直点最关键的不足，分析跨维度的因果关系（如"目标偏高导致难点无法在课时内完成"）。\n\n【综合建议】1-2句，从本角色视角给出最重要的行动建议。",
+  "opinion": "【总体印象】1-2句整体感受，带角色视角。\n\n【最大亮点】1-2句，说明哪里做得最好，引用原文。\n\n【核心问题】1-2句，直点最关键的不足，分析跨维度的因果关系。\n\n【综合建议】1-2句，从本角色视角给出最重要的行动建议。",
   "highlights": [
     "亮点1：xxx（引用原文），分析其价值",
     "亮点2：xxx（可选）"
   ],
   "dimensions": [
-    { "name": "课程设计", "score": 4.5, "comment": "2-3句话，包含：具体发现 + 理由 + 改进方向。", "evidence": "原文中最能支撑此评价的片段（可选）" },
-    { "name": "知识链", "score": 4.0, "comment": "2-3句话" },
-    { "name": "教学目标", "score": 3.8, "comment": "2-3句话" },
-    { "name": "课程重点", "score": 4.5, "comment": "2-3句话" },
-    { "name": "课程难点", "score": 4.0, "comment": "2-3句话" },
-    { "name": "学习梯度", "score": 3.5, "comment": "2-3句话" }
+    { "name": "逻辑结构", "score": 4.5, "comment": "2-3句话，包含：具体发现 + 理由 + 改进方向。", "evidence": "原文中最能支撑此评价的片段（可选）" },
+    { "name": "内容深度", "score": 4.0, "comment": "2-3句话" },
+    { "name": "表达清晰", "score": 3.8, "comment": "2-3句话" },
+    { "name": "论据充分", "score": 4.5, "comment": "2-3句话" },
+    { "name": "创新性", "score": 4.0, "comment": "2-3句话" },
+    { "name": "实用性", "score": 3.5, "comment": "2-3句话" }
   ],
   "suggestions": [
     {
-      "content": "①问题定位：xxx（原文：「xxx」）→ ②改进方案：具体怎么改 → ③参考方向：可参考哪种教学实践或理论",
+      "content": "①问题定位：xxx（原文：「xxx」）→ ②改进方案：具体怎么改 → ③参考方向：可参考的方法或案例",
       "priority": "high",
       "evidence": "直接引用原文的问题片段（可选）",
-      "expected_effect": "实施此建议后，学生学习效果预计会有什么改善（仅 high 优先级必填）"
+      "expected_effect": "实施此建议后预计效果（仅 high 优先级必填）"
     },
     {
       "content": "①问题定位：xxx → ②改进方案：xxx → ③参考方向：xxx",
@@ -46,7 +46,7 @@ const REVIEW_SYSTEM_PROMPT = (agent: Agent) => `${agent.system_prompt}
 }
 
 评分范围 1-5，保留一位小数。dimensions 必须包含以上 6 个维度。suggestions 的 priority 仅限 "high"、"medium"、"low"。
-重要：不要评价课件交互逻辑和功能设计，只专注教研内容本身。comments 不得只写一句话。`
+comments 不得只写一句话。`
 
 function parseReviewJSON(text: string) {
   try {
@@ -83,7 +83,7 @@ export function createFailedAgentReview(agent: Agent, errorMessage: string): Age
     opinion: '该角色本次分析未能成功生成，请根据错误信息重试。',
     status: 'failed',
     error_message: errorMessage,
-    dimensions: TEACHING_DIMENSIONS.map((name) => ({ name, score: 0 })),
+    dimensions: REVIEW_DIMENSIONS.map((name) => ({ name, score: 0 })),
     suggestions: [],
   }
 }
@@ -97,15 +97,11 @@ export async function executeAgentReview(
   const docContent = doc.raw_content || '(文档内容为空)'
   const truncated = docContent.slice(0, 12000)
 
-  const teachingContext = doc.teaching_plan
-    ? `\n\n【教研案结构化信息】
-学科：${doc.teaching_plan.subject || '未识别'}
-年级：${doc.teaching_plan.grade || '未识别'}
-课题：${doc.teaching_plan.topic || '未识别'}
-课时：${doc.teaching_plan.duration || '未识别'}${doc.teaching_plan.objectives ? `\n教学目标：
-  知识与技能：${doc.teaching_plan.objectives.knowledge || '未明确'}
-  过程与方法：${doc.teaching_plan.objectives.process || '未明确'}
-  情感态度与价值观：${doc.teaching_plan.objectives.emotion || '未明确'}` : ''}${doc.teaching_plan.keyPoints?.length ? `\n教学重点：${doc.teaching_plan.keyPoints.join('；')}` : ''}${doc.teaching_plan.difficulties?.length ? `\n教学难点：${doc.teaching_plan.difficulties.join('；')}` : ''}`
+  const metaContext = doc.doc_metadata
+    ? `\n\n【文档结构化信息】
+主题：${doc.doc_metadata.topic || '未识别'}
+类别：${doc.doc_metadata.category || '未识别'}
+作者：${doc.doc_metadata.author || '未识别'}${doc.doc_metadata.abstract ? `\n摘要：${doc.doc_metadata.abstract}` : ''}${doc.doc_metadata.keyPoints?.length ? `\n核心要点：${doc.doc_metadata.keyPoints.join('；')}` : ''}`
     : ''
 
   return new Promise<AgentReview>((resolve, reject) => {
@@ -114,7 +110,7 @@ export async function executeAgentReview(
     chatCompletion(
       [
         { role: 'system', content: REVIEW_SYSTEM_PROMPT(agent) },
-        { role: 'user', content: `请评审以下教研案：\n\n标题：${doc.title}${teachingContext}\n\n完整内容：\n${truncated}` },
+        { role: 'user', content: `请评审以下文档：\n\n标题：${doc.title}${metaContext}\n\n完整内容：\n${truncated}` },
       ],
       {
         onChunk: (chunk) => {
@@ -131,7 +127,7 @@ export async function executeAgentReview(
               score: 3.5,
               opinion: text.slice(0, 500) || '评审结果解析失败，请重试',
               status: 'completed',
-              dimensions: TEACHING_DIMENSIONS.map((name) => ({ name, score: 3.5 })),
+              dimensions: REVIEW_DIMENSIONS.map((name) => ({ name, score: 3.5 })),
               suggestions: [],
             })
             return
@@ -140,7 +136,7 @@ export async function executeAgentReview(
           const parsedDimensions = Array.isArray(parsed.dimensions) ? parsed.dimensions : []
           const parsedSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
           const dimensionMap = new Map(parsedDimensions.map((dimension) => [dimension.name, dimension]))
-          const normalizedDimensions = TEACHING_DIMENSIONS.map((dimensionName) => {
+          const normalizedDimensions = REVIEW_DIMENSIONS.map((dimensionName) => {
             const found = dimensionMap.get(dimensionName)
             return {
               name: dimensionName,

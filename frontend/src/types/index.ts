@@ -18,7 +18,7 @@ export interface Document {
   keywords?: string[]
   summary?: string
   word_count?: number
-  teaching_plan?: TeachingPlanFields
+  doc_metadata?: DocumentMetadata
   status: 'uploading' | 'parsing' | 'ready' | 'error'
   review_count: number
   created_at: string
@@ -27,29 +27,18 @@ export interface Document {
 
 export type AgentColor = 'indigo' | 'violet' | 'pink' | 'orange' | 'teal' | 'sky' | 'slate' | 'green' | 'rose' | 'amber' | 'emerald' | 'cyan'
 
-export type TeachingDimension = '课程设计' | '知识链' | '教学目标' | '课程重点' | '课程难点' | '学习梯度'
+export type ReviewDimension = '逻辑结构' | '内容深度' | '表达清晰' | '论据充分' | '创新性' | '实用性'
 
-export const TEACHING_DIMENSIONS: TeachingDimension[] = ['课程设计', '知识链', '教学目标', '课程重点', '课程难点', '学习梯度']
+export const REVIEW_DIMENSIONS: ReviewDimension[] = ['逻辑结构', '内容深度', '表达清晰', '论据充分', '创新性', '实用性']
 
-export interface TeachingPlanFields {
-  subject?: string
-  grade?: string
+export interface DocumentMetadata {
+  category?: string
+  author?: string
   topic?: string
-  duration?: string
-  objectives?: {
-    knowledge?: string
-    process?: string
-    emotion?: string
-  }
+  abstract?: string
   keyPoints?: string[]
-  difficulties?: string[]
-  teachingProcess?: {
-    stage: string
-    content: string
-    duration?: string
-  }[]
-  boardDesign?: string
-  reflection?: string
+  sections?: { title: string; content: string }[]
+  wordCount?: number
 }
 
 export interface AgentPersonality {
@@ -78,13 +67,13 @@ export interface Agent {
   usage_count: number
   color: AgentColor
   category?: AgentCategory
-  focusDimension?: TeachingDimension
+  focusDimension?: ReviewDimension
   creation_history?: { role: 'ai' | 'user'; content: string }[]
   last_used_at?: string
   created_at: string
 }
 
-export type AgentCategory = 'teacher' | 'student' | 'parent'
+export type AgentCategory = 'analyst' | 'engineer' | 'creative'
 
 export interface AgentTemplate {
   id: string
@@ -94,7 +83,7 @@ export interface AgentTemplate {
   tags: string[]
   description: string
   category: AgentCategory
-  focusDimension?: TeachingDimension
+  focusDimension?: ReviewDimension
   personality: AgentPersonality
   expertise: string[]
   behavior: {

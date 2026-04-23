@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { AGENT_COLORS } from '@/stores/agentStore'
 import type { AgentColor } from '@/types'
-import { TEACHING_DIMENSIONS } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 
 interface RadarDataset {
   label: string
@@ -15,7 +15,7 @@ interface RadarChartProps {
 }
 
 export function RadarChart({ datasets, size = 280 }: RadarChartProps) {
-  const dimensions = TEACHING_DIMENSIONS
+  const dimensions = REVIEW_DIMENSIONS
   const n = dimensions.length
   const cx = size / 2
   const cy = size / 2

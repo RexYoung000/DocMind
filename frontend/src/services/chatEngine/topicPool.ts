@@ -15,19 +15,14 @@ export class TopicPool {
   loadFromDocument(doc: Document) {
     const sections: string[] = []
 
-    if (doc.teaching_plan?.keyPoints) {
-      sections.push(...doc.teaching_plan.keyPoints.map((kp) => `关于重点"${kp}"的教学处理`))
+    if (doc.doc_metadata?.keyPoints) {
+      sections.push(...doc.doc_metadata.keyPoints.map((kp) => `关于要点"${kp}"的深入讨论`))
     }
-    if (doc.teaching_plan?.difficulties) {
-      sections.push(...doc.teaching_plan.difficulties.map((d) => `关于难点"${d}"的突破策略`))
+    if (doc.doc_metadata?.abstract) {
+      sections.push(`文档摘要的核心论点分析`)
     }
-    if (doc.teaching_plan?.objectives) {
-      const obj = doc.teaching_plan.objectives
-      if (obj.knowledge) sections.push(`知识目标"${obj.knowledge}"的可达性`)
-      if (obj.process) sections.push(`过程目标"${obj.process}"的落实方式`)
-    }
-    if (doc.teaching_plan?.topic) {
-      sections.push(`"${doc.teaching_plan.topic}"的整体教学设计`)
+    if (doc.doc_metadata?.topic) {
+      sections.push(`"${doc.doc_metadata.topic}"的整体评价`)
     }
 
     for (const text of sections) {

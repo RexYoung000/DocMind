@@ -172,7 +172,7 @@ export default function AgentCreatePage() {
         avatar: parsed.avatar || '🤖',
         tagline: parsed.tagline || '',
         color: validColor as AgentColor,
-        category: (['teacher', 'student', 'parent'].includes(parsed.category) ? parsed.category : 'teacher') as AgentCategory,
+        category: (['analyst', 'engineer', 'creative'].includes(parsed.category) ? parsed.category : 'analyst') as AgentCategory,
         focusDimension: parsed.focusDimension || undefined,
         personality: {
           directness: Math.min(5, Math.max(1, parsed.personality?.directness || 3)),

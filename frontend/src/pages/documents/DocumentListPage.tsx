@@ -76,7 +76,7 @@ export default function DocumentListPage() {
         raw_content: result.raw_content,
         structured_content: result.structured_content,
         word_count: result.word_count,
-        teaching_plan: result.teaching_plan,
+        doc_metadata: result.doc_metadata,
         status: 'ready',
       })
       toast('success', `文档《${doc.title}》解析完成`)

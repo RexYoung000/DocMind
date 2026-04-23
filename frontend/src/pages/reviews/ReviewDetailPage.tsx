@@ -6,7 +6,7 @@ import { useReviewStore } from '@/stores/reviewStore'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
 import { RadarChart } from '@/components/ui/RadarChart'
-import { TEACHING_DIMENSIONS } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 
 const PRIORITY_STYLES = {
   high: { label: '高', color: 'bg-red-50 text-red-600 border-red-200' },
@@ -65,15 +65,15 @@ export default function ReviewDetailPage() {
 
   const teacherReviews = completedReviews.filter((item) => {
     const agent = review.agents?.find((candidate) => candidate.id === item.agent_id)
-    return !agent?.category || agent.category === 'teacher'
+    return !agent?.category || agent.category === 'analyst'
   })
   const studentReviews = completedReviews.filter((item) => {
     const agent = review.agents?.find((candidate) => candidate.id === item.agent_id)
-    return agent?.category === 'student'
+    return agent?.category === 'engineer'
   })
   const parentReviews = completedReviews.filter((item) => {
     const agent = review.agents?.find((candidate) => candidate.id === item.agent_id)
-    return agent?.category === 'parent'
+    return agent?.category === 'creative'
   })
 
   const radarDatasets = useMemo(() => completedReviews.map((item) => {
@@ -81,11 +81,11 @@ export default function ReviewDetailPage() {
     return {
       label: item.agent_name,
       color: item.agent_color,
-      scores: TEACHING_DIMENSIONS.map((dimension) => dimensionMap.get(dimension) || 0),
+      scores: REVIEW_DIMENSIONS.map((dimension) => dimensionMap.get(dimension) || 0),
     }
   }), [completedReviews])
 
-  const avgDimScores = useMemo(() => TEACHING_DIMENSIONS.map((dimension) => {
+  const avgDimScores = useMemo(() => REVIEW_DIMENSIONS.map((dimension) => {
     const scores = completedReviews.map((item) => {
       const found = item.dimensions.find((entry) => entry.name === dimension)
       return found?.score || 0
@@ -356,9 +356,9 @@ export default function ReviewDetailPage() {
             <Users className="h-5 w-5 text-primary-500" /> 各角色评审观点
           </h2>
 
-          {renderAgentCards(teacherReviews, '教研老师视角', '👨‍🏫')}
-          {renderAgentCards(studentReviews, '学生视角', '🎒')}
-          {renderAgentCards(parentReviews, '家长视角', '👨‍👩‍👧')}
+          {renderAgentCards(teacherReviews, '分析师视角', '📊')}
+          {renderAgentCards(studentReviews, '工程师视角', '⚙️')}
+          {renderAgentCards(parentReviews, '创意视角', '🎨')}
         </div>
       )}
 

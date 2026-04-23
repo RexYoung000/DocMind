@@ -136,44 +136,38 @@ export default function DocumentDetailPage() {
             </dl>
           </div>
 
-          {doc.teaching_plan && (
+          {doc.doc_metadata && (
             <div className="rounded-xl border border-primary-200 bg-primary-50/50 p-5 shadow-sm">
-              <h3 className="text-base font-semibold text-gray-900 mb-3">教研案识别结果</h3>
+              <h3 className="text-base font-semibold text-gray-900 mb-3">文档识别结果</h3>
               <dl className="space-y-2 text-sm">
-                {doc.teaching_plan.topic && (
+                {doc.doc_metadata.topic && (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">课题</dt>
-                    <dd className="font-medium text-gray-900 truncate max-w-[60%] text-right">{doc.teaching_plan.topic}</dd>
+                    <dt className="text-gray-500">主题</dt>
+                    <dd className="font-medium text-gray-900 truncate max-w-[60%] text-right">{doc.doc_metadata.topic}</dd>
                   </div>
                 )}
-                {doc.teaching_plan.subject && (
+                {doc.doc_metadata.category && (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">学科</dt>
-                    <dd className="font-medium text-gray-900">{doc.teaching_plan.subject}</dd>
+                    <dt className="text-gray-500">类别</dt>
+                    <dd className="font-medium text-gray-900">{doc.doc_metadata.category}</dd>
                   </div>
                 )}
-                {doc.teaching_plan.grade && (
+                {doc.doc_metadata.author && (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">年级</dt>
-                    <dd className="font-medium text-gray-900">{doc.teaching_plan.grade}</dd>
+                    <dt className="text-gray-500">作者</dt>
+                    <dd className="font-medium text-gray-900">{doc.doc_metadata.author}</dd>
                   </div>
                 )}
-                {doc.teaching_plan.duration && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">课时</dt>
-                    <dd className="font-medium text-gray-900">{doc.teaching_plan.duration}</dd>
-                  </div>
-                )}
-                {doc.teaching_plan.keyPoints && doc.teaching_plan.keyPoints.length > 0 && (
+                {doc.doc_metadata.abstract && (
                   <div>
-                    <dt className="text-gray-500 mb-1">教学重点</dt>
-                    <dd className="text-gray-700">{doc.teaching_plan.keyPoints.join('；')}</dd>
+                    <dt className="text-gray-500 mb-1">摘要</dt>
+                    <dd className="text-gray-700">{doc.doc_metadata.abstract}</dd>
                   </div>
                 )}
-                {doc.teaching_plan.difficulties && doc.teaching_plan.difficulties.length > 0 && (
+                {doc.doc_metadata.keyPoints && doc.doc_metadata.keyPoints.length > 0 && (
                   <div>
-                    <dt className="text-gray-500 mb-1">教学难点</dt>
-                    <dd className="text-gray-700">{doc.teaching_plan.difficulties.join('；')}</dd>
+                    <dt className="text-gray-500 mb-1">核心要点</dt>
+                    <dd className="text-gray-700">{doc.doc_metadata.keyPoints.join('；')}</dd>
                   </div>
                 )}
               </dl>
