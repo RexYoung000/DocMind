@@ -18,9 +18,9 @@ export function toast(type: ToastItem['type'], message: string) {
 
 const ICONS = { success: CheckCircle, error: AlertCircle, info: Info }
 const STYLES = {
-  success: 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300',
-  error: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/40 dark:border-red-700 dark:text-red-300',
-  info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300',
+  success: 'border-emerald-200 bg-emerald-50/95 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
+  error: 'border-red-200 bg-red-50/95 text-red-800 dark:border-red-800 dark:bg-red-950/70 dark:text-red-300',
+  info: 'border-blue-200 bg-blue-50/95 text-blue-800 dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-300',
 }
 
 export function ToastContainer() {
@@ -40,11 +40,17 @@ export function ToastContainer() {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed top-4 right-4 z-[100] space-y-2 w-80">
+    <div className="fixed right-4 top-4 z-[100] w-80 space-y-2">
       {toasts.map((t) => {
         const Icon = ICONS[t.type]
         return (
-          <div key={t.id} className={cn('flex items-start gap-2 rounded-lg border px-4 py-3 shadow-lg animate-slide-up', STYLES[t.type])}>
+          <div
+            key={t.id}
+            className={cn(
+              'dm-panel flex items-start gap-2 rounded-2xl px-4 py-3 shadow-lg animate-slide-up',
+              STYLES[t.type]
+            )}
+          >
             <Icon className="h-4 w-4 mt-0.5 shrink-0" />
             <p className="flex-1 text-sm">{t.message}</p>
             <button

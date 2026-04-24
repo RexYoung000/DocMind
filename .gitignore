@@ -34,6 +34,13 @@ Thumbs.db
 # Cursor
 .cursor/plans/
 
+# Local agent scratch files
+.tmp/
+frontend/.tmp/
+.auto-coding/testing/
+frontend/playwright-report/
+frontend/test-results/
+
 # Deploy scripts (contain credentials)
 deploy*.py
 

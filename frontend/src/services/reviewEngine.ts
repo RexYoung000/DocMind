@@ -1,68 +1,292 @@
 import type { Agent, AgentColor, Document, AgentReview, Suggestion, ReviewSummary } from '@/types'
-import { REVIEW_DIMENSIONS } from '@/types'
+import { TEACHING_DIMENSIONS } from '@/types'
 import { chatCompletion } from './llmService'
 import { createId } from '@/utils/id'
 
+const MAX_DOC_CONTENT = 14000
+const MIN_TOP_SUGGESTIONS = 3
+const MAX_TOP_SUGGESTIONS = 10
+
 const REVIEW_SYSTEM_PROMPT = (agent: Agent) => `${agent.system_prompt}
 
-你现在正在执行文档评审任务。你必须严格从【${agent.name}】的角色视角出发，提出独特、有深度的见解，避免与其他评审者雷同的泛泛评价。
+你现在正在执行一份教研案深度评审任务，必须严格站在「${agent.name}」的身份与视角说话。
 
-## 评审要求
-1. **引用原文**：在 comment、suggestion 和 opinion 中，针对具体问题或亮点时，必须引用原文片段（格式：（原文：「xxx」）），让作者知道你在评价哪里。
-2. **深度分析**：不要停留在表面，要找到问题背后的原因，以及改进后的实际影响。
-3. **建议数量**：提供 3-8 条建议，且每条建议必须包含"问题定位 → 改进方案 → 参考方向"三部分，禁止空话和泛泛而谈。
-4. **优先级含义**：high = 直接影响文档核心质量；medium = 影响整体质量但非致命；low = 锦上添花的优化。
-5. **亮点发现**：即便文档有明显不足，也必须找到 1-3 个真正出彩的地方，客观平衡评价。
+评审要求：
+1. 不要只复述文件内容，要判断教学设计背后的因果链条，例如“目标过高为什么会导致难点无法落地”“活动设计为什么会削弱学生理解”。
+2. 亮点和问题都要落在具体文本上。引用原文时使用（原文：“……”）格式。
+3. 优化建议必须是可执行建议，不要空话。每条建议都要包含：问题定位 -> 改进动作 -> 预期收益。
+4. 建议数量默认 3-8 条；如果文档明显优秀，也至少保留 2-3 条高价值建议。
+5. 评论要有延伸，说明它会如何影响课堂节奏、学生理解、教学评价或迁移应用。
+6. 维度评论不能只有一句话，每个维度都要给出具体发现和原因。
 
-请严格按以下 JSON 格式输出，仅输出 JSON，不得有任何其他内容：
+只输出 JSON，不要输出 Markdown，不要输出解释，不要输出代码块。
 {
-  "status_message": "一句俏皮有趣的角色独白，用【${agent.name}】的语气描述刚才的评审心得（2-3句，有个性，有角色感）",
+  "status_message": "2-3 句角色化短评",
   "score": 4.2,
-  "opinion": "【总体印象】1-2句整体感受，带角色视角。\n\n【最大亮点】1-2句，说明哪里做得最好，引用原文。\n\n【核心问题】1-2句，直点最关键的不足，分析跨维度的因果关系。\n\n【综合建议】1-2句，从本角色视角给出最重要的行动建议。",
-  "highlights": [
-    "亮点1：xxx（引用原文），分析其价值",
-    "亮点2：xxx（可选）"
-  ],
+  "opinion": "整体评价，需要包含：总体判断、最大亮点、核心痛点、最优先动作。",
+  "highlights": ["亮点 1", "亮点 2"],
   "dimensions": [
-    { "name": "逻辑结构", "score": 4.5, "comment": "2-3句话，包含：具体发现 + 理由 + 改进方向。", "evidence": "原文中最能支撑此评价的片段（可选）" },
-    { "name": "内容深度", "score": 4.0, "comment": "2-3句话" },
-    { "name": "表达清晰", "score": 3.8, "comment": "2-3句话" },
-    { "name": "论据充分", "score": 4.5, "comment": "2-3句话" },
-    { "name": "创新性", "score": 4.0, "comment": "2-3句话" },
-    { "name": "实用性", "score": 3.5, "comment": "2-3句话" }
+    { "name": "课程设计", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "知识链", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "教学目标", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "课程重点", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "课程难点", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "学习梯度", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" }
   ],
   "suggestions": [
     {
-      "content": "①问题定位：xxx（原文：「xxx」）→ ②改进方案：具体怎么改 → ③参考方向：可参考的方法或案例",
+      "title": "建议标题",
+      "content": "问题定位 -> 改进动作 -> 预期收益",
       "priority": "high",
-      "evidence": "直接引用原文的问题片段（可选）",
-      "expected_effect": "实施此建议后预计效果（仅 high 优先级必填）"
-    },
-    {
-      "content": "①问题定位：xxx → ②改进方案：xxx → ③参考方向：xxx",
-      "priority": "medium"
+      "evidence": "必要时引用原文",
+      "expected_effect": "实施后的预期改善"
     }
   ]
+}`
+
+type ParsedReviewPayload = {
+  status_message?: string
+  score?: number
+  opinion?: string
+  highlights?: string[]
+  dimensions?: { name?: string; score?: number; comment?: string; evidence?: string }[]
+  suggestions?: {
+    title?: string
+    content?: string
+    priority?: string
+    evidence?: string
+    expected_effect?: string
+  }[]
 }
 
-评分范围 1-5，保留一位小数。dimensions 必须包含以上 6 个维度。suggestions 的 priority 仅限 "high"、"medium"、"low"。
-comments 不得只写一句话。`
+type ParsedSummaryPayload = {
+  overview?: string
+  strengths?: string[]
+  pain_points?: string[]
+  consensus?: string[]
+  controversies?: {
+    topic?: string
+    opinions?: { agent_name?: string; agent_color?: string; stance?: string }[]
+  }[]
+  top_suggestions?: {
+    title?: string
+    content?: string
+    priority?: string
+    evidence?: string
+    expected_effect?: string
+    source_agent?: string
+  }[]
+}
 
-function parseReviewJSON(text: string) {
+function extractJsonBlock(text: string) {
+  const fencedMatch = text.match(/```json\s*([\s\S]*?)```/i)
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim()
+  }
+
+  const objectMatch = text.match(/\{[\s\S]*\}/)
+  return objectMatch?.[0] ?? null
+}
+
+function parseJsonCandidate<T>(text: string): T | null {
+  const jsonBlock = extractJsonBlock(text)
+  if (!jsonBlock) {
+    return null
+  }
+
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return null
-
-    return JSON.parse(jsonMatch[0]) as {
-      score: number
-      opinion: string
-      highlights?: string[]
-      dimensions: { name: string; score: number; comment?: string; evidence?: string }[]
-      suggestions: { content: string; priority: string; evidence?: string; expected_effect?: string }[]
-    }
+    return JSON.parse(jsonBlock) as T
   } catch {
     return null
   }
+}
+
+function normalizeScore(score: number | undefined, fallback = 3.5) {
+  if (typeof score !== 'number' || Number.isNaN(score)) {
+    return fallback
+  }
+
+  return Math.min(5, Math.max(1, Number(score.toFixed(1))))
+}
+
+function normalizeTextList(items: unknown, minLength = 0) {
+  if (!Array.isArray(items)) {
+    return []
+  }
+
+  return items
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item.length > minLength)
+}
+
+function normalizeSuggestionKey(suggestion: { title?: string; content?: string }) {
+  return `${suggestion.title || ''}|${suggestion.content || ''}`
+    .toLowerCase()
+    .replace(/\s+/g, '')
+}
+
+function normalizeSuggestions(
+  suggestions: ParsedReviewPayload['suggestions'] | ParsedSummaryPayload['top_suggestions'],
+  sourceAgent: string,
+) {
+  if (!Array.isArray(suggestions)) {
+    return [] as Suggestion[]
+  }
+
+  const seen = new Set<string>()
+
+  const normalized: Array<Suggestion | null> = suggestions
+    .map((suggestion) => {
+      const content = suggestion.content?.trim()
+      if (!content) {
+        return null
+      }
+
+      const title = suggestion.title?.trim()
+      const key = normalizeSuggestionKey({ title, content })
+      if (seen.has(key)) {
+        return null
+      }
+      seen.add(key)
+
+      const priority = suggestion.priority === 'high' || suggestion.priority === 'medium' || suggestion.priority === 'low'
+        ? suggestion.priority
+        : 'medium'
+
+      return {
+        id: createId(),
+        title,
+        content,
+        priority,
+        adopted: false,
+        source_agent: sourceAgent,
+        evidence: suggestion.evidence?.trim(),
+        expected_effect: suggestion.expected_effect?.trim(),
+      } satisfies Suggestion
+    })
+
+  return normalized.filter((suggestion) => suggestion !== null) as Suggestion[]
+}
+
+function normalizeDimensions(dimensions: ParsedReviewPayload['dimensions']) {
+  const dimensionMap = new Map(
+    Array.isArray(dimensions)
+      ? dimensions
+          .filter((dimension) => dimension.name)
+          .map((dimension) => [dimension.name as string, dimension])
+      : []
+  )
+
+  return TEACHING_DIMENSIONS.map((dimensionName) => {
+    const found = dimensionMap.get(dimensionName)
+    return {
+      name: dimensionName,
+      score: normalizeScore(found?.score),
+      comment: found?.comment?.trim(),
+      evidence: found?.evidence?.trim(),
+    }
+  })
+}
+
+function buildTeachingContext(doc: Document) {
+  if (!doc.teaching_plan) {
+    return ''
+  }
+
+  const teachingPlan = doc.teaching_plan
+  const sections = [
+    `学科：${teachingPlan.subject || '未识别'}`,
+    `年级：${teachingPlan.grade || '未识别'}`,
+    `课题：${teachingPlan.topic || '未识别'}`,
+    `课时：${teachingPlan.duration || '未识别'}`,
+  ]
+
+  if (teachingPlan.objectives) {
+    sections.push(
+      `教学目标：`,
+      `- 知识与技能：${teachingPlan.objectives.knowledge || '未明确'}`,
+      `- 过程与方法：${teachingPlan.objectives.process || '未明确'}`,
+      `- 情感态度价值观：${teachingPlan.objectives.emotion || '未明确'}`
+    )
+  }
+
+  if (teachingPlan.keyPoints?.length) {
+    sections.push(`教学重点：${teachingPlan.keyPoints.join('；')}`)
+  }
+
+  if (teachingPlan.difficulties?.length) {
+    sections.push(`教学难点：${teachingPlan.difficulties.join('；')}`)
+  }
+
+  if (teachingPlan.teachingProcess?.length) {
+    sections.push(
+      '教学过程：',
+      ...teachingPlan.teachingProcess.slice(0, 5).map((item) => `- ${item.stage}：${item.content}`)
+    )
+  }
+
+  return `\n\n【结构化教学信息】\n${sections.join('\n')}`
+}
+
+function buildStructuredSections(doc: Document) {
+  const sections = (doc.structured_content?.sections as { title?: string; content?: string }[] | undefined) || []
+  if (!sections.length) {
+    return ''
+  }
+
+  return `\n\n【文档章节摘录】\n${sections
+    .slice(0, 6)
+    .map((section, index) => `${index + 1}. ${section.title || '未命名章节'}：${(section.content || '').slice(0, 240)}`)
+    .join('\n')}`
+}
+
+async function collectCompletionText(
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  signal?: AbortSignal,
+  onProgress?: (text: string) => void,
+) {
+  let fullText = ''
+
+  await chatCompletion(
+    messages,
+    {
+      onChunk: (chunk) => {
+        fullText += chunk
+        onProgress?.(fullText)
+      },
+      onDone: (text) => {
+        fullText = text || fullText
+        onProgress?.(fullText)
+      },
+      onError: () => {},
+    },
+    signal,
+  )
+
+  return fullText
+}
+
+async function repairReviewPayload(rawText: string, signal?: AbortSignal) {
+  const repairedText = await collectCompletionText(
+    [
+      {
+        role: 'system',
+        content:
+          '你是一个 JSON 修复助手。请把下面的评审文本整理成合法 JSON，只输出 JSON，不要解释。必须保留 opinion、dimensions、suggestions 字段，并尽量补全 title、evidence、expected_effect。',
+      },
+      {
+        role: 'user',
+        content: rawText,
+      },
+    ],
+    signal,
+  )
+
+  return parseJsonCandidate<ParsedReviewPayload>(repairedText)
+}
+
+function buildFallbackOpinion(text: string) {
+  return text.trim().slice(0, 500) || '评审结果解析失败，请重试'
 }
 
 export interface ReviewProgress {
@@ -83,7 +307,7 @@ export function createFailedAgentReview(agent: Agent, errorMessage: string): Age
     opinion: '该角色本次分析未能成功生成，请根据错误信息重试。',
     status: 'failed',
     error_message: errorMessage,
-    dimensions: REVIEW_DIMENSIONS.map((name) => ({ name, score: 0 })),
+    dimensions: TEACHING_DIMENSIONS.map((name) => ({ name, score: 0 })),
     suggestions: [],
   }
 }
@@ -95,197 +319,234 @@ export async function executeAgentReview(
   signal?: AbortSignal,
 ): Promise<AgentReview> {
   const docContent = doc.raw_content || '(文档内容为空)'
-  const truncated = docContent.slice(0, 12000)
+  const truncatedContent = docContent.slice(0, MAX_DOC_CONTENT)
+  const teachingContext = buildTeachingContext(doc)
+  const structuredSections = buildStructuredSections(doc)
 
-  const metaContext = doc.doc_metadata
-    ? `\n\n【文档结构化信息】
-主题：${doc.doc_metadata.topic || '未识别'}
-类别：${doc.doc_metadata.category || '未识别'}
-作者：${doc.doc_metadata.author || '未识别'}${doc.doc_metadata.abstract ? `\n摘要：${doc.doc_metadata.abstract}` : ''}${doc.doc_metadata.keyPoints?.length ? `\n核心要点：${doc.doc_metadata.keyPoints.join('；')}` : ''}`
-    : ''
-
-  return new Promise<AgentReview>((resolve, reject) => {
-    let fullText = ''
-
-    chatCompletion(
-      [
-        { role: 'system', content: REVIEW_SYSTEM_PROMPT(agent) },
-        { role: 'user', content: `请评审以下文档：\n\n标题：${doc.title}${metaContext}\n\n完整内容：\n${truncated}` },
-      ],
+  const rawText = await collectCompletionText(
+    [
+      { role: 'system', content: REVIEW_SYSTEM_PROMPT(agent) },
       {
-        onChunk: (chunk) => {
-          fullText += chunk
-          onProgress(fullText)
-        },
-        onDone: (text) => {
-          const parsed = parseReviewJSON(text)
-          if (!parsed) {
-            resolve({
-              agent_id: agent.id,
-              agent_name: agent.name,
-              agent_color: agent.color,
-              score: 3.5,
-              opinion: text.slice(0, 500) || '评审结果解析失败，请重试',
-              status: 'completed',
-              dimensions: REVIEW_DIMENSIONS.map((name) => ({ name, score: 3.5 })),
-              suggestions: [],
-            })
-            return
-          }
+        role: 'user',
+        content: `请评审以下教研案。
 
-          const parsedDimensions = Array.isArray(parsed.dimensions) ? parsed.dimensions : []
-          const parsedSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
-          const dimensionMap = new Map(parsedDimensions.map((dimension) => [dimension.name, dimension]))
-          const normalizedDimensions = REVIEW_DIMENSIONS.map((dimensionName) => {
-            const found = dimensionMap.get(dimensionName)
-            return {
-              name: dimensionName,
-              score: found ? Math.min(5, Math.max(1, found.score)) : 3.5,
-              comment: found?.comment,
-              evidence: found?.evidence,
-            }
-          })
+标题：${doc.title}${teachingContext}${structuredSections}
 
-          resolve({
-            agent_id: agent.id,
-            agent_name: agent.name,
-            agent_color: agent.color,
-            score: Math.min(5, Math.max(1, parsed.score)),
-            opinion: parsed.opinion,
-            status: 'completed',
-            highlights: Array.isArray(parsed.highlights) ? parsed.highlights : undefined,
-            dimensions: normalizedDimensions,
-            suggestions: parsedSuggestions.map((suggestion) => ({
-              id: createId(),
-              content: suggestion.content,
-              priority: (['high', 'medium', 'low'].includes(suggestion.priority) ? suggestion.priority : 'medium') as Suggestion['priority'],
-              adopted: false,
-              source_agent: agent.name,
-              evidence: suggestion.evidence,
-              expected_effect: suggestion.expected_effect,
-            })),
-          })
-        },
-        onError: (error) => reject(error),
+【完整内容】
+${truncatedContent}`,
       },
-      signal,
-    ).catch(reject)
-  })
+    ],
+    signal,
+    onProgress,
+  )
+
+  let parsed = parseJsonCandidate<ParsedReviewPayload>(rawText)
+  if (!parsed) {
+    try {
+      parsed = await repairReviewPayload(rawText, signal)
+    } catch {
+      parsed = null
+    }
+  }
+
+  if (!parsed) {
+    return {
+      agent_id: agent.id,
+      agent_name: agent.name,
+      agent_color: agent.color,
+      score: 3.5,
+      opinion: buildFallbackOpinion(rawText),
+      status: 'completed',
+      dimensions: TEACHING_DIMENSIONS.map((name) => ({ name, score: 3.5 })),
+      suggestions: [],
+    }
+  }
+
+  return {
+    agent_id: agent.id,
+    agent_name: agent.name,
+    agent_color: agent.color,
+    score: normalizeScore(parsed.score),
+    opinion: parsed.opinion?.trim() || buildFallbackOpinion(rawText),
+    status: 'completed',
+    highlights: normalizeTextList(parsed.highlights, 3),
+    dimensions: normalizeDimensions(parsed.dimensions),
+    suggestions: normalizeSuggestions(parsed.suggestions, agent.name),
+  }
 }
 
 function collectSuggestions(agentReviews: AgentReview[]) {
-  const allSuggestions = agentReviews.flatMap((agentReview) => agentReview.suggestions)
-  const highPriority = allSuggestions.filter((suggestion) => suggestion.priority === 'high')
-  const mediumPriority = allSuggestions.filter((suggestion) => suggestion.priority === 'medium')
-  const lowPriority = allSuggestions.filter((suggestion) => suggestion.priority === 'low')
+  const ranked = agentReviews
+    .flatMap((review) => review.suggestions)
+    .sort((left, right) => {
+      const priorityScore = { high: 3, medium: 2, low: 1 }
+      return priorityScore[right.priority] - priorityScore[left.priority]
+    })
 
-  return [...highPriority, ...mediumPriority, ...lowPriority]
-    .filter((suggestion, index, suggestions) => suggestions.findIndex((item) => item.content === suggestion.content) === index)
-    .slice(0, 8)
+  const seen = new Set<string>()
+  const collected: Suggestion[] = []
+
+  for (const suggestion of ranked) {
+    const key = normalizeSuggestionKey(suggestion)
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    collected.push({ ...suggestion, id: createId() })
+
+    if (collected.length >= MAX_TOP_SUGGESTIONS) {
+      break
+    }
+  }
+
+  return collected
+}
+
+function buildFallbackSummary(completedReviews: AgentReview[]): ReviewSummary {
+  const topSuggestions = collectSuggestions(completedReviews)
+  const highlights = completedReviews.flatMap((review) => review.highlights || []).slice(0, 3)
+  const risks = topSuggestions.slice(0, 3).map((suggestion) => suggestion.title || suggestion.content)
+
+  return {
+    overview: completedReviews.length
+      ? `已完成 ${completedReviews.length} 份评审，整体判断集中在“可用但仍有关键教学落点需要加深”。`
+      : '暂无有效评审结果。',
+    strengths: highlights.length ? highlights : ['文档至少具备了基础教学要素，便于继续迭代。'],
+    pain_points: risks,
+    consensus: completedReviews.length === 1 ? [completedReviews[0].opinion.slice(0, 120)] : [],
+    controversies: [],
+    top_suggestions: topSuggestions,
+  }
 }
 
 export async function generateSummary(agentReviews: AgentReview[]): Promise<ReviewSummary> {
   const completedReviews = agentReviews.filter((review) => review.status !== 'failed')
-  const top_suggestions = collectSuggestions(completedReviews)
-
-  if (completedReviews.length < 2) {
+  if (completedReviews.length === 0) {
     return {
-      consensus: completedReviews.length === 1 ? [completedReviews[0].opinion.slice(0, 200)] : [],
+      overview: '暂无有效评审结果。',
+      strengths: [],
+      pain_points: [],
+      consensus: [],
       controversies: [],
-      top_suggestions,
+      top_suggestions: [],
     }
   }
 
-  const agentSummaries = completedReviews.map((agentReview) =>
-    `【${agentReview.agent_name}】评分 ${agentReview.score.toFixed(1)}
-观点：${agentReview.opinion}
-各维度：${agentReview.dimensions.map((dimension) => `${dimension.name}=${dimension.score}`).join('；')}
-建议：${agentReview.suggestions.map((suggestion) => suggestion.content).join('；')}`
-  ).join('\n\n')
+  const fallbackSummary = buildFallbackSummary(completedReviews)
+  if (completedReviews.length < 2) {
+    return fallbackSummary
+  }
 
-  const prompt = `以下是多位评审者（包括教研老师、学生和家长视角）对同一份教研案的评审结果：
+  const agentColorMap: Record<string, AgentColor> = {}
+  for (const review of completedReviews) {
+    agentColorMap[review.agent_name] = review.agent_color
+  }
+
+  const agentSummaries = completedReviews
+    .map((review) => {
+      const dimensionSummary = review.dimensions
+        .map((dimension) => `${dimension.name}=${dimension.score.toFixed(1)}${dimension.comment ? `(${dimension.comment})` : ''}`)
+        .join('；')
+
+      const suggestionSummary = review.suggestions
+        .map((suggestion) =>
+          `- [${suggestion.priority}] ${suggestion.title ? `${suggestion.title}: ` : ''}${suggestion.content}${suggestion.expected_effect ? `；预期收益：${suggestion.expected_effect}` : ''}`
+        )
+        .join('\n')
+
+      return `【${review.agent_name}】评分 ${review.score.toFixed(1)}
+总体意见：${review.opinion}
+亮点：${(review.highlights || []).join('；') || '未单列'}
+维度：${dimensionSummary}
+建议：
+${suggestionSummary || '- 暂无'}`
+    })
+    .join('\n\n')
+
+  const summaryPrompt = `以下是多位角色对同一份教研案的评审结果：
 
 ${agentSummaries}
 
-请分析所有评审者的观点，提取：
-1. consensus：所有评审者都认同的观点（1-3条），特别关注教师/学生/家长视角之间的共识
-2. controversies：评审者之间存在分歧的话题（0-2条），特别关注教师与学生/家长视角的差异
-
-仅输出 JSON，格式如下：
+请输出一个更适合教师阅读与落地执行的汇总 JSON，只输出 JSON：
 {
-  "consensus": ["共识1", "共识2"],
+  "overview": "2-3 句整体诊断，要指出最核心的教学痛点与改进方向",
+  "strengths": ["2-4 条真正成立的亮点"],
+  "pain_points": ["2-4 条最值得优先处理的痛点"],
+  "consensus": ["2-4 条多角色共识"],
   "controversies": [
     {
-      "topic": "分歧话题",
+      "topic": "争议主题",
       "opinions": [
-        { "agent_name": "张三", "agent_color": "indigo", "stance": "张三的观点" },
-        { "agent_name": "李四", "agent_color": "violet", "stance": "李四的观点" }
+        { "agent_name": "角色名", "agent_color": "indigo", "stance": "该角色的立场" }
       ]
     }
+  ],
+  "top_suggestions": [
+    {
+      "title": "建议标题",
+      "content": "问题定位 -> 改进动作 -> 预期收益",
+      "priority": "high",
+      "evidence": "关键证据，可空",
+      "expected_effect": "实施后的教学收益",
+      "source_agent": "若为跨角色共识可写 评审汇总"
+    }
   ]
-}`
+}
+
+要求：
+1. top_suggestions 数量控制在 3-10 条，默认越少越精，不要堆砌重复建议。
+2. 不要停留在“表面现象”，要说明这些问题为什么会影响课堂质量。
+3. 优先保留真正能落地、能提升课堂效果的建议。
+4. 如果多位角色提到同一痛点，请合并成更高质量的一条。`
 
   try {
-    const result = await new Promise<{ consensus: string[]; controversies: ReviewSummary['controversies'] }>((resolve) => {
-      let fullText = ''
-
-      chatCompletion(
-        [
-          { role: 'system', content: '你是一个中立的教研评审汇总分析助手，擅长从多个视角中提取共识和分歧。仅输出 JSON。' },
-          { role: 'user', content: prompt },
-        ],
+    const summaryText = await collectCompletionText(
+      [
         {
-          onChunk: (chunk) => {
-            fullText += chunk
-          },
-          onDone: (text) => {
-            try {
-              const jsonMatch = text.match(/\{[\s\S]*\}/)
-              if (!jsonMatch) {
-                resolve({ consensus: ['各评审者已完成评审'], controversies: [] })
-                return
-              }
-
-              const parsed = JSON.parse(jsonMatch[0]) as {
-                consensus?: string[]
-                controversies?: { topic: string; opinions: { agent_name: string; agent_color?: string; stance: string }[] }[]
-              }
-
-              const agentColorMap: Record<string, string> = {}
-              for (const review of completedReviews) {
-                agentColorMap[review.agent_name] = review.agent_color
-              }
-
-              resolve({
-                consensus: Array.isArray(parsed.consensus) ? parsed.consensus : [],
-                controversies: (parsed.controversies || []).map((controversy) => ({
-                  topic: controversy.topic,
-                  opinions: (controversy.opinions || []).map((opinion) => ({
-                    agent_name: opinion.agent_name,
-                    agent_color: (agentColorMap[opinion.agent_name] || opinion.agent_color || 'slate') as AgentColor,
-                    stance: opinion.stance,
-                  })),
-                })),
-              })
-            } catch {
-              resolve({ consensus: ['各评审者已完成评审'], controversies: [] })
-            }
-          },
-          onError: () => {
-            resolve({ consensus: ['各评审者已完成评审'], controversies: [] })
-          },
+          role: 'system',
+          content: '你是一个擅长教研报告整合的高级分析助手，负责把多角色意见压缩成更深、更准、更可执行的结论。只输出 JSON。',
         },
-      ).catch(() => {
-        resolve({ consensus: ['各评审者已完成评审'], controversies: [] })
-      })
-    })
+        { role: 'user', content: summaryPrompt },
+      ],
+    )
 
-    return { ...result, top_suggestions }
-  } catch {
-    return {
-      consensus: ['各评审者已完成评审，请查看各角色的具体观点'],
-      controversies: [],
-      top_suggestions,
+    const parsed = parseJsonCandidate<ParsedSummaryPayload>(summaryText)
+    if (!parsed) {
+      return fallbackSummary
     }
+
+    const topSuggestions = normalizeSuggestions(
+      parsed.top_suggestions,
+      '评审汇总',
+    ).slice(0, MAX_TOP_SUGGESTIONS)
+
+    return {
+      overview: parsed.overview?.trim() || fallbackSummary.overview,
+      strengths: normalizeTextList(parsed.strengths, 3).slice(0, 4),
+      pain_points: normalizeTextList(parsed.pain_points, 3).slice(0, 4),
+      consensus: normalizeTextList(parsed.consensus, 3).slice(0, 4),
+      controversies: Array.isArray(parsed.controversies)
+        ? parsed.controversies
+            .filter((item) => item.topic?.trim())
+            .map((item) => ({
+              topic: item.topic!.trim(),
+              opinions: (item.opinions || [])
+                .filter((opinion) => opinion.agent_name?.trim() && opinion.stance?.trim())
+                .map((opinion) => ({
+                  agent_name: opinion.agent_name!.trim(),
+                  agent_color: (agentColorMap[opinion.agent_name!.trim()] || opinion.agent_color || 'slate') as AgentColor,
+                  stance: opinion.stance!.trim(),
+                })),
+            }))
+            .filter((item) => item.opinions.length > 0)
+            .slice(0, 3)
+        : fallbackSummary.controversies,
+      top_suggestions: topSuggestions.length >= MIN_TOP_SUGGESTIONS
+        ? topSuggestions
+        : fallbackSummary.top_suggestions,
+    }
+  } catch {
+    return fallbackSummary
   }
 }

@@ -1,4 +1,5 @@
 {
+  "autoCompactWindow": 1000000,
   "permissions": {
     "allow": [
       "Bash(xargs wc *)",

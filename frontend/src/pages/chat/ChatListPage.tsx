@@ -56,6 +56,12 @@ export default function ChatListPage() {
       topic: `关于《${review.document?.title || '文档'}》的评审讨论`,
       status: 'active',
       participants,
+      discussionMode: 'moderated',
+      discussionState: 'idle',
+      topicTags: [
+        ...(review.summary?.pain_points || []),
+        ...(review.summary?.top_suggestions?.map((item) => item.title || item.content) || []),
+      ].slice(0, 5),
       created_at: new Date().toISOString(),
     }
     createRoom(room)
@@ -117,6 +123,7 @@ export default function ChatListPage() {
       status: 'active',
       participants,
       discussionMode,
+      discussionState: 'idle',
       created_at: new Date().toISOString(),
     }
     createRoom(room)

@@ -1,11 +1,13 @@
-import { useMemo } from 'react'
-import { MessageCircle, Users, Clock, Zap } from 'lucide-react'
-import type { ChatMessage, Agent, DiscussionMode } from '@/types'
+import { Target, Zap } from 'lucide-react'
+import type { ChatAgendaItem, ChatMessage, Agent, DiscussionMode, DiscussionState } from '@/types'
 
 interface Props {
   messages: ChatMessage[]
   participants: Agent[]
   discussionMode?: DiscussionMode
+  discussionState?: DiscussionState
+  currentTopic?: ChatAgendaItem | null
+  remainingTopics?: number
   isActive: boolean
 }
 
@@ -15,53 +17,61 @@ const MODE_LABELS: Record<DiscussionMode, string> = {
   debate: '辩论模式',
 }
 
-export function ChatRoomStatusBar({ messages, participants, discussionMode, isActive }: Props) {
-  const stats = useMemo(() => {
-    const agentMessages = messages.filter((m) => m.sender_type === 'agent' && m.sender_id !== 'system')
-    const userMessages = messages.filter((m) => m.sender_type === 'user')
-    const activeAgents = new Set(agentMessages.map((m) => m.sender_id)).size
+const STATE_LABELS: Record<DiscussionState, string> = {
+  idle: '待开始',
+  kickoff: '开场中',
+  discussing: '讨论中',
+  summarizing: '收束中',
+  closed: '已关闭',
+}
 
-    const lastMsg = messages[messages.length - 1]
-    const lastActiveAgo = lastMsg
-      ? Math.round((Date.now() - new Date(lastMsg.created_at).getTime()) / 1000)
-      : null
-
-    let lastActiveText = '无活动'
-    if (lastActiveAgo !== null) {
-      if (lastActiveAgo < 60) lastActiveText = '刚刚'
-      else if (lastActiveAgo < 3600) lastActiveText = `${Math.floor(lastActiveAgo / 60)}分钟前`
-      else lastActiveText = `${Math.floor(lastActiveAgo / 3600)}小时前`
-    }
-
-    return { agentMsgCount: agentMessages.length, userMsgCount: userMessages.length, activeAgents, lastActiveText }
-  }, [messages])
+export function ChatRoomStatusBar({
+  messages,
+  participants,
+  discussionMode,
+  discussionState,
+  currentTopic,
+  remainingTopics = 0,
+  isActive,
+}: Props) {
+  const agentCount = participants.length
+  const messageCount = messages.length
 
   return (
-    <div className="flex items-center gap-4 px-5 py-1.5 border-b border-gray-100 dark:border-gray-700 text-[11px] text-gray-400 dark:text-gray-500 bg-gray-50/50 dark:bg-gray-800/30">
-      {discussionMode && (
-        <span className="flex items-center gap-1">
+    <div className="border-b border-gray-100 bg-white px-5 py-2.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {discussionMode ? (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-200">
           <Zap className="h-3 w-3" />
           {MODE_LABELS[discussionMode]}
         </span>
-      )}
-      <span className="flex items-center gap-1">
-        <MessageCircle className="h-3 w-3" />
-        {stats.agentMsgCount + stats.userMsgCount} 条消息
-      </span>
-      <span className="flex items-center gap-1">
-        <Users className="h-3 w-3" />
-        {stats.activeAgents}/{participants.length} 位角色活跃
-      </span>
-      <span className="flex items-center gap-1">
-        <Clock className="h-3 w-3" />
-        {stats.lastActiveText}
-      </span>
-      {isActive && (
-        <span className="ml-auto flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-          进行中
+          ) : null}
+
+          {currentTopic ? (
+        <span className="inline-flex min-w-0 items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200">
+          <Target className="h-3 w-3 text-primary-500" />
+          <span className="truncate">{currentTopic.text}</span>
         </span>
-      )}
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 text-[11px] text-gray-400">
+          <span>{messageCount} 条</span>
+          <span>·</span>
+          <span>{agentCount} 位角色</span>
+          {remainingTopics > 0 ? <span>· 剩余 {remainingTopics}</span> : null}
+
+      {isActive ? (
+            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {discussionState ? STATE_LABELS[discussionState] : '进行中'}
+        </span>
+          ) : discussionState ? (
+            <span>{STATE_LABELS[discussionState]}</span>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }

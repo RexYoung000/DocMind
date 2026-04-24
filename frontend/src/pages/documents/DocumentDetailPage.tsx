@@ -1,51 +1,73 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, File, FileCode, ClipboardCheck, Clock, Tag, BarChart3, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  BarChart3,
+  ClipboardCheck,
+  Clock3,
+  File,
+  FileCode,
+  FileText,
+  Tag,
+  Trash2,
+} from 'lucide-react'
 import { useDocumentStore } from '@/stores/documentStore'
 import { useReviewStore } from '@/stores/reviewStore'
 import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { formatTimeAgo } from '@/utils/format'
+import { formatFileSize, formatTimeAgo } from '@/utils/format'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 
-const FILE_ICON_MAP: Record<string, typeof FileText> = { pdf: FileText, docx: File, md: FileCode, txt: File }
+const FILE_ICON_MAP: Record<string, typeof FileText> = {
+  pdf: FileText,
+  docx: File,
+  md: FileCode,
+  txt: FileText,
+}
+
 const FILE_COLOR_MAP: Record<string, string> = {
-  pdf: 'bg-red-50 text-red-500', docx: 'bg-blue-50 text-blue-500',
-  md: 'bg-gray-100 text-gray-600', txt: 'bg-gray-50 text-gray-500',
+  pdf: 'bg-red-50 text-red-500',
+  docx: 'bg-blue-50 text-blue-500',
+  md: 'bg-slate-100 text-slate-600',
+  txt: 'bg-gray-100 text-gray-500',
 }
 
 export default function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const doc = useDocumentStore((s) => s.documents.find((d) => d.id === id))
-  const removeDocument = useDocumentStore((s) => s.removeDocument)
-  const allReviews = useReviewStore((s) => s.reviews)
-  const reviewsForDoc = useMemo(() => allReviews.filter((r) => r.document_id === id), [allReviews, id])
-
+  const document = useDocumentStore((state) => state.documents.find((item) => item.id === id))
+  const removeDocument = useDocumentStore((state) => state.removeDocument)
+  const reviews = useReviewStore((state) => state.reviews)
+  const reviewsForDocument = useMemo(() => reviews.filter((review) => review.document_id === id), [reviews, id])
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  if (!doc) {
+  if (!document) {
     return (
       <div className="space-y-6 animate-slide-up">
         <Link to="/documents" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
           <ArrowLeft className="h-4 w-4" /> 返回文档列表
         </Link>
-        <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
-          <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-          <p className="text-gray-500 font-medium">文档不存在或已被删除</p>
-          <Link to="/documents" className="mt-4 inline-block rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 no-underline">
-            返回文档列表
-          </Link>
-        </div>
+        <Card className="rounded-[28px]">
+          <CardContent className="py-16 text-center">
+            <FileText className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+            <p className="text-base font-medium text-gray-500">文档不存在或已被删除</p>
+            <Link to="/documents" className="mt-4 inline-flex rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white no-underline hover:bg-primary-700">
+              返回文档列表
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
-  const Icon = FILE_ICON_MAP[doc.file_type] || FileText
-  const iconColor = FILE_COLOR_MAP[doc.file_type] || 'bg-gray-50 text-gray-500'
+  const Icon = FILE_ICON_MAP[document.file_type] || FileText
+  const iconColor = FILE_COLOR_MAP[document.file_type] || 'bg-gray-100 text-gray-500'
 
   const handleDelete = () => {
-    removeDocument(doc.id)
-    toast('success', `已删除文档《${doc.title}》`)
+    removeDocument(document.id)
+    toast('success', `已删除文档《${document.title}》`)
     navigate('/documents')
   }
 
@@ -55,171 +77,233 @@ export default function DocumentDetailPage() {
         <ArrowLeft className="h-4 w-4" /> 返回文档列表
       </Link>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className={`rounded-lg p-2.5 ${iconColor}`}>
-            <Icon className="h-6 w-6" />
+      <section className="dm-hero-card rounded-[28px] px-6 py-6 sm:px-8">
+        <div className="relative z-[1] grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div>
+            <div className="flex items-start gap-4">
+              <div className={`rounded-[20px] p-3 shadow-sm ${iconColor}`}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <span className="dm-kicker">Document Detail</span>
+                <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900">{document.title}</h1>
+                <p className="mt-2 text-sm text-gray-500">
+                  {document.file_type.toUpperCase()} · {document.word_count ? `${document.word_count.toLocaleString()} 字` : formatFileSize(document.file_size)} · {document.review_count} 次评审
+                </p>
+              </div>
+            </div>
+
+            {document.keywords && document.keywords.length > 0 ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {document.keywords.map((keyword) => (
+                  <Badge key={keyword} variant="primary">
+                    <Tag className="mr-1 h-3 w-3" />
+                    {keyword}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold text-gray-900">{doc.title}</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {doc.file_type.toUpperCase()} · {doc.word_count ? `${doc.word_count.toLocaleString()} 字` : `${(doc.file_size / 1024).toFixed(1)} KB`} · {doc.review_count} 次评审
-            </p>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <div className="dm-panel rounded-2xl px-4 py-4">
+              <p className="text-xs text-gray-500">最近更新</p>
+              <p className="mt-2 text-xl font-bold text-gray-900">{formatTimeAgo(document.updated_at || document.created_at)}</p>
+            </div>
+            <div className="dm-panel rounded-2xl px-4 py-4">
+              <p className="text-xs text-gray-500">评审记录</p>
+              <p className="mt-2 text-xl font-bold text-gray-900">{reviewsForDocument.length}</p>
+            </div>
+            <div className="dm-panel rounded-2xl px-4 py-4">
+              <p className="text-xs text-gray-500">文件大小</p>
+              <p className="mt-2 text-xl font-bold text-gray-900">{formatFileSize(document.file_size)}</p>
+            </div>
           </div>
         </div>
-        {doc.keywords && doc.keywords.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {doc.keywords.map((kw) => (
-              <span key={kw} className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-600">
-                <Tag className="h-3 w-3" /> {kw}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">操作</h3>
-            <div className="space-y-3">
-              {doc.status === 'ready' && (
-                <Link
-                  to={`/reviews/create?doc=${doc.id}`}
-                  className="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm font-medium text-primary-600 hover:bg-primary-100 transition-colors no-underline"
-                >
-                  <ClipboardCheck className="h-5 w-5" />
-                  <div>
-                    <p className="font-medium">发起评审</p>
-                    <p className="text-xs text-primary-500">选择角色开始多角色评审</p>
+          <Card className="rounded-[28px]">
+            <CardHeader>
+              <h2 className="text-sm font-semibold text-gray-900">操作</h2>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {document.status === 'ready' ? (
+                <Link to={`/reviews/create?doc=${document.id}`} className="block no-underline">
+                  <div className="rounded-2xl border border-primary-200 bg-primary-50 px-4 py-4 transition-colors hover:bg-primary-100">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-2xl bg-white p-2.5 text-primary-600 shadow-sm">
+                        <ClipboardCheck className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-primary-700">发起评审</p>
+                        <p className="mt-1 text-xs leading-6 text-primary-600">基于当前文档直接进入角色选择和评审配置。</p>
+                      </div>
+                    </div>
                   </div>
                 </Link>
-              )}
+              ) : null}
+
               <button
                 onClick={() => setConfirmDelete(true)}
-                className="flex w-full items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors cursor-pointer"
+                className="flex w-full items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left transition-colors hover:bg-red-100 cursor-pointer"
               >
-                <Trash2 className="h-5 w-5" />
-                <div className="text-left">
-                  <p className="font-medium">删除文档</p>
-                  <p className="text-xs text-red-500">此操作不可撤销</p>
+                <div className="rounded-2xl bg-white p-2.5 text-red-600 shadow-sm">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-red-700">删除文档</p>
+                  <p className="mt-1 text-xs leading-6 text-red-600">仅删除当前文档内容，不会自动删除既有评审记录。</p>
                 </div>
               </button>
-              <ConfirmDialog
-                open={confirmDelete}
-                title="确认删除文档"
-                description={`确定要删除《${doc.title}》吗？关联的评审记录不会被删除，但文档内容将无法恢复。`}
-                confirmText="删除"
-                variant="danger"
-                onConfirm={handleDelete}
-                onCancel={() => setConfirmDelete(false)}
-              />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">文档信息</h3>
-            <dl className="space-y-2 text-sm">
-              {[
-                ['格式', doc.file_type.toUpperCase()],
-                ['文件名', doc.file_name],
-                ['字数', doc.word_count ? `${doc.word_count.toLocaleString()} 字` : '-'],
-                ['大小', `${(doc.file_size / 1024).toFixed(1)} KB`],
-                ['评审次数', `${doc.review_count} 次`],
-                ['上传时间', new Date(doc.created_at).toLocaleDateString('zh-CN')],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <dt className="text-gray-500">{label}</dt>
-                  <dd className="font-medium text-gray-900 truncate max-w-[60%] text-right">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-
-          {doc.doc_metadata && (
-            <div className="rounded-xl border border-primary-200 bg-primary-50/50 p-5 shadow-sm">
-              <h3 className="text-base font-semibold text-gray-900 mb-3">文档识别结果</h3>
-              <dl className="space-y-2 text-sm">
-                {doc.doc_metadata.topic && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">主题</dt>
-                    <dd className="font-medium text-gray-900 truncate max-w-[60%] text-right">{doc.doc_metadata.topic}</dd>
+          <Card className="rounded-[28px]">
+            <CardHeader>
+              <h2 className="text-sm font-semibold text-gray-900">文档信息</h2>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-3 text-sm">
+                {[
+                  ['格式', document.file_type.toUpperCase()],
+                  ['文件名', document.file_name],
+                  ['字数', document.word_count ? `${document.word_count.toLocaleString()} 字` : '-'],
+                  ['大小', formatFileSize(document.file_size)],
+                  ['评审次数', `${document.review_count} 次`],
+                  ['上传时间', new Date(document.created_at).toLocaleDateString('zh-CN')],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-4 border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+                    <dt className="text-gray-500">{label}</dt>
+                    <dd className="max-w-[65%] truncate text-right font-medium text-gray-900">{value}</dd>
                   </div>
-                )}
-                {doc.doc_metadata.category && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">类别</dt>
-                    <dd className="font-medium text-gray-900">{doc.doc_metadata.category}</dd>
-                  </div>
-                )}
-                {doc.doc_metadata.author && (
-                  <div className="flex justify-between">
-                    <dt className="text-gray-500">作者</dt>
-                    <dd className="font-medium text-gray-900">{doc.doc_metadata.author}</dd>
-                  </div>
-                )}
-                {doc.doc_metadata.abstract && (
-                  <div>
-                    <dt className="text-gray-500 mb-1">摘要</dt>
-                    <dd className="text-gray-700">{doc.doc_metadata.abstract}</dd>
-                  </div>
-                )}
-                {doc.doc_metadata.keyPoints && doc.doc_metadata.keyPoints.length > 0 && (
-                  <div>
-                    <dt className="text-gray-500 mb-1">核心要点</dt>
-                    <dd className="text-gray-700">{doc.doc_metadata.keyPoints.join('；')}</dd>
-                  </div>
-                )}
+                ))}
               </dl>
-            </div>
-          )}
+            </CardContent>
+          </Card>
+
+          {document.teaching_plan ? (
+            <Card className="rounded-[28px]">
+              <CardHeader>
+                <h2 className="text-sm font-semibold text-gray-900">识别出的教学要素</h2>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {document.teaching_plan.topic ? (
+                  <div>
+                    <p className="text-xs text-gray-500">课题</p>
+                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.topic}</p>
+                  </div>
+                ) : null}
+                {document.teaching_plan.subject ? (
+                  <div>
+                    <p className="text-xs text-gray-500">学科</p>
+                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.subject}</p>
+                  </div>
+                ) : null}
+                {document.teaching_plan.grade ? (
+                  <div>
+                    <p className="text-xs text-gray-500">年级</p>
+                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.grade}</p>
+                  </div>
+                ) : null}
+                {document.teaching_plan.duration ? (
+                  <div>
+                    <p className="text-xs text-gray-500">课时</p>
+                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.duration}</p>
+                  </div>
+                ) : null}
+                {document.teaching_plan.keyPoints?.length ? (
+                  <div>
+                    <p className="text-xs text-gray-500">教学重点</p>
+                    <p className="mt-1 leading-7 text-gray-700">{document.teaching_plan.keyPoints.join('；')}</p>
+                  </div>
+                ) : null}
+                {document.teaching_plan.difficulties?.length ? (
+                  <div>
+                    <p className="text-xs text-gray-500">教学难点</p>
+                    <p className="mt-1 leading-7 text-gray-700">{document.teaching_plan.difficulties.join('；')}</p>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">评审历史</h3>
-            {reviewsForDoc.length === 0 ? (
-              <div className="py-8 text-center">
-                <ClipboardCheck className="mx-auto h-10 w-10 text-gray-300 mb-2" />
-                <p className="text-sm text-gray-500">暂无评审记录</p>
-                {doc.status === 'ready' && (
-                  <Link to={`/reviews/create?doc=${doc.id}`} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 no-underline">
-                    <ClipboardCheck className="h-4 w-4" /> 发起第一次评审
-                  </Link>
-                )}
+        <Card className="rounded-[28px]">
+          <CardHeader className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">评审历史</h2>
+              <p className="mt-1 text-xs text-gray-500">围绕该文档已经生成过的报告，可以直接回看或继续讨论。</p>
+            </div>
+            {document.status === 'ready' ? (
+              <Link to={`/reviews/create?doc=${document.id}`} className="no-underline">
+                <Button size="sm">
+                  <ClipboardCheck className="h-4 w-4" />
+                  新建评审
+                </Button>
+              </Link>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {reviewsForDocument.length === 0 ? (
+              <div className="py-10 text-center">
+                <ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-gray-300" />
+                <p className="text-sm text-gray-500">还没有评审记录</p>
+                <p className="mt-1 text-xs text-gray-400">如果文档已准备完成，现在就可以发起第一轮评审。</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {reviewsForDoc.map((review) => (
+                {reviewsForDocument.map((review) => (
                   <Link
                     key={review.id}
                     to={`/reviews/${review.id}`}
-                    className="block rounded-lg border border-gray-100 p-4 hover:bg-gray-50 transition-colors no-underline"
+                    className="block rounded-2xl border border-gray-100 bg-gray-50/70 p-4 transition-colors hover:bg-gray-50 no-underline"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-primary-500" />
-                        <span className="text-lg font-bold text-gray-900">{review.overall_score?.toFixed(1) || '-'}</span>
-                        <span className="text-sm text-gray-500">分</span>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-2xl bg-white p-2.5 text-primary-600 shadow-sm">
+                          <BarChart3 className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-base font-semibold text-gray-900">{review.overall_score?.toFixed(1) || '-'} 分</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {review.agent_reviews?.filter((item) => item.status !== 'failed').length || 0} 位角色完成分析
+                          </p>
+                        </div>
                       </div>
-                      <span className="flex items-center gap-1 text-xs text-gray-400">
-                        <Clock className="h-3 w-3" /> {formatTimeAgo(review.created_at)}
+                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        {formatTimeAgo(review.created_at)}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {review.agent_reviews?.map((ar) => (
-                        <span key={ar.agent_id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                          {ar.agent_name} {ar.score.toFixed(1)}
-                        </span>
-                      ))}
-                    </div>
+
+                    {review.summary?.top_suggestions?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {review.summary.top_suggestions.slice(0, 3).map((suggestion) => (
+                          <Badge key={suggestion.id} variant="default">
+                            {suggestion.title || suggestion.content.slice(0, 18)}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                   </Link>
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="确认删除文档"
+        description={`确定要删除《${document.title}》吗？文档内容会被移除，历史评审记录不会自动删除。`}
+        confirmText="删除"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

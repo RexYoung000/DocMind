@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
-import { useThemeStore } from '@/stores/themeStore'
+import { THEME_OPTIONS, useThemeStore } from '@/stores/themeStore'
 import {
   FileText,
   Bot,
@@ -37,10 +37,12 @@ export function Header() {
   const { user } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [clearDataConfirm, setClearDataConfirm] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const themeMenuRef = useRef<HTMLDivElement>(null)
   const prevPathnameRef = useRef(location.pathname)
 
   if (location.pathname !== prevPathnameRef.current) {
@@ -51,10 +53,6 @@ export function Header() {
   const openSearch = useCallback(() => setSearchOpen(true), [])
   const closeSearch = useCallback(() => setSearchOpen(false), [])
 
-  const cycleTheme = () => {
-    const next = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light'
-    setTheme(next)
-  }
   const themeLabel = theme === 'light' ? '亮色模式' : theme === 'dark' ? '暗色模式' : '跟随系统'
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
 
@@ -62,6 +60,9 @@ export function Header() {
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false)
+      }
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setThemeMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -136,14 +137,38 @@ export function Header() {
             >
               <Search className="h-4 w-4" />
             </button>
-            <button
-              onClick={cycleTheme}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors cursor-pointer"
-              aria-label={themeLabel}
-              title={themeLabel}
-            >
-              <ThemeIcon className="h-4 w-4" />
-            </button>
+            <div className="relative" ref={themeMenuRef}>
+              <button
+                onClick={() => setThemeMenuOpen((prev) => !prev)}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors cursor-pointer"
+                aria-label={themeLabel}
+                title={themeLabel}
+              >
+                <ThemeIcon className="h-4 w-4" />
+              </button>
+              {themeMenuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-32 rounded-lg border border-gray-200 bg-white py-1 shadow-lg animate-fade-in">
+                  {THEME_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setTheme(option.value)
+                        setThemeMenuOpen(false)
+                      }}
+                      className={cn(
+                        'flex w-full items-center justify-between px-3 py-2 text-sm transition-colors cursor-pointer border-0 bg-transparent',
+                        theme === option.value
+                          ? 'bg-primary-50 text-primary-600'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      )}
+                    >
+                      <span>{option.label}</span>
+                      {theme === option.value && <span className="text-[10px]">选中</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
           <div className="relative" ref={menuRef}>
             <button

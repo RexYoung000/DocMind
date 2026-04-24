@@ -26,7 +26,9 @@
       "Bash(VITE_BASE_PATH=/teaching/ npx vite build)",
       "Bash(MSYS_NO_PATHCONV=1 npx vite build --base /teaching/)",
       "Bash(npx npm-check *)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(git *)",
+      "WebFetch(domain:api-docs.deepseek.com)"
     ]
   }
 }

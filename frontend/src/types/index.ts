@@ -31,6 +31,10 @@ export type ReviewDimension = '逻辑结构' | '内容深度' | '表达清晰' |
 
 export const REVIEW_DIMENSIONS: ReviewDimension[] = ['逻辑结构', '内容深度', '表达清晰', '论据充分', '创新性', '实用性']
 
+export type TeachingDimension = '课程设计' | '知识链' | '教学目标' | '课程重点' | '课程难点' | '学习梯度'
+
+export const TEACHING_DIMENSIONS: TeachingDimension[] = ['课程设计', '知识链', '教学目标', '课程重点', '课程难点', '学习梯度']
+
 export interface DocumentMetadata {
   category?: string
   author?: string
@@ -73,7 +77,7 @@ export interface Agent {
   created_at: string
 }
 
-export type AgentCategory = 'analyst' | 'engineer' | 'creative'
+export type AgentCategory = 'analyst' | 'engineer' | 'creative' | 'teacher' | 'student' | 'parent'
 
 export interface AgentTemplate {
   id: string
@@ -121,6 +125,7 @@ export interface AgentReview {
 
 export interface Suggestion {
   id: string
+  title?: string
   content: string
   priority: 'high' | 'medium' | 'low'
   adopted: boolean
@@ -130,6 +135,9 @@ export interface Suggestion {
 }
 
 export interface ReviewSummary {
+  overview?: string
+  strengths?: string[]
+  pain_points?: string[]
   consensus: string[]
   controversies: Controversy[]
   top_suggestions: Suggestion[]
@@ -141,6 +149,15 @@ export interface Controversy {
 }
 
 export type DiscussionMode = 'free' | 'moderated' | 'debate'
+export type DiscussionState = 'idle' | 'kickoff' | 'discussing' | 'summarizing' | 'closed'
+
+export interface ChatAgendaItem {
+  id: string
+  text: string
+  source: 'document' | 'review' | 'user'
+  priority: number
+  status: 'pending' | 'active' | 'done'
+}
 
 export interface ChatRoom {
   id: string
@@ -151,6 +168,9 @@ export interface ChatRoom {
   status: 'active' | 'closed'
   participants: Agent[]
   discussionMode?: DiscussionMode
+  discussionState?: DiscussionState
+  currentTopicId?: string
+  pendingTopics?: ChatAgendaItem[]
   topicTags?: string[]
   stats?: {
     messageCount: number

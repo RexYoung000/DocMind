@@ -1,45 +1,67 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Upload, Search, FileText, File, FileCode, MoreHorizontal,
-  Clock, Trash2, ClipboardCheck, X, CloudUpload,
+  CloudUpload,
+  ClipboardCheck,
+  Clock3,
+  File,
+  FileCode,
+  FileText,
+  MoreHorizontal,
+  Search,
+  Trash2,
+  Upload,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatTimeAgo, formatFileSize } from '@/utils/format'
+import { formatFileSize, formatTimeAgo } from '@/utils/format'
 import { useDocumentStore } from '@/stores/documentStore'
 import { useAuthStore } from '@/stores/authStore'
 import { parseDocument, createDocumentFromFile, SUPPORTED_EXTENSIONS, MAX_FILE_SIZE } from '@/services/documentParser'
 import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Card, CardContent, CardHeader } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import type { Document } from '@/types'
 
 const FILE_ICONS: Record<string, typeof FileText> = {
-  pdf: FileText, docx: File, md: FileCode, txt: File,
+  pdf: FileText,
+  docx: File,
+  md: FileCode,
+  txt: File,
 }
+
 const FILE_COLORS: Record<string, string> = {
-  pdf: 'text-red-500 bg-red-50', docx: 'text-blue-500 bg-blue-50',
-  md: 'text-gray-600 bg-gray-100', txt: 'text-gray-500 bg-gray-50',
+  pdf: 'bg-red-50 text-red-500',
+  docx: 'bg-blue-50 text-blue-500',
+  md: 'bg-slate-100 text-slate-600',
+  txt: 'bg-gray-100 text-gray-500',
 }
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  ready: { label: '已就绪', color: 'bg-emerald-50 text-emerald-600' },
-  parsing: { label: '解析中', color: 'bg-amber-50 text-amber-600' },
-  uploading: { label: '上传中', color: 'bg-blue-50 text-blue-600' },
-  error: { label: '解析失败', color: 'bg-red-50 text-red-600' },
+
+const STATUS_META: Record<Document['status'], { label: string; variant: 'success' | 'warning' | 'info' | 'danger' }> = {
+  ready: { label: '已就绪', variant: 'success' },
+  parsing: { label: '解析中', variant: 'warning' },
+  uploading: { label: '上传中', variant: 'info' },
+  error: { label: '解析失败', variant: 'danger' },
 }
 
 export default function DocumentListPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const documents = useDocumentStore((s) => s.documents)
-  const addDocument = useDocumentStore((s) => s.addDocument)
-  const updateDocument = useDocumentStore((s) => s.updateDocument)
-  const removeDocument = useDocumentStore((s) => s.removeDocument)
+  const documents = useDocumentStore((state) => state.documents)
+  const addDocument = useDocumentStore((state) => state.addDocument)
+  const updateDocument = useDocumentStore((state) => state.updateDocument)
+  const removeDocument = useDocumentStore((state) => state.removeDocument)
+
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | 'ready' | 'parsing'>('all')
   const [showUpload, setShowUpload] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -49,240 +71,349 @@ export default function DocumentListPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpenId])
 
-  const filteredDocs = documents.filter((doc) => {
-    if (activeTab !== 'all' && doc.status !== activeTab) return false
-    if (search && !doc.title.toLowerCase().includes(search.toLowerCase())) return false
-    return true
+  const readyCount = useMemo(() => documents.filter((item) => item.status === 'ready').length, [documents])
+  const parsingCount = useMemo(() => documents.filter((item) => item.status === 'parsing' || item.status === 'uploading').length, [documents])
+
+  const filteredDocs = documents.filter((document) => {
+    const matchesTab =
+      activeTab === 'all'
+        ? true
+        : activeTab === 'ready'
+          ? document.status === 'ready'
+          : document.status === 'parsing' || document.status === 'uploading'
+    const matchesSearch = search ? document.title.toLowerCase().includes(search.toLowerCase()) : true
+    return matchesTab && matchesSearch
   })
 
-  const processFile = useCallback(async (file: File) => {
-    const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
-    if (!SUPPORTED_EXTENSIONS.includes(ext)) {
-      toast('error', `不支持的文件格式: ${ext}，请上传 PDF/DOCX/MD/TXT`)
-      return
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      toast('error', '文件大小超过 20MB 限制')
-      return
-    }
+  const processFile = useCallback(
+    async (file: File) => {
+      const ext = `.${file.name.split('.').pop()?.toLowerCase() || ''}`
+      if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+        toast('error', `不支持的文件格式：${ext}，请上传 PDF、DOCX、MD 或 TXT`)
+        return
+      }
 
-    const doc = createDocumentFromFile(file, user?.id || '')
-    addDocument(doc)
-    setShowUpload(false)
+      if (file.size > MAX_FILE_SIZE) {
+        toast('error', '文件大小超过 20MB 限制')
+        return
+      }
 
-    try {
-      const result = await parseDocument(file)
-      updateDocument(doc.id, {
-        raw_content: result.raw_content,
-        structured_content: result.structured_content,
-        word_count: result.word_count,
-        doc_metadata: result.doc_metadata,
-        status: 'ready',
-      })
-      toast('success', `文档《${doc.title}》解析完成`)
-      navigate(`/documents/${doc.id}`)
-    } catch (err) {
-      updateDocument(doc.id, { status: 'error' })
-      toast('error', `解析失败: ${err instanceof Error ? err.message : '未知错误'}`)
-    }
-  }, [user, addDocument, updateDocument])
+      const document = createDocumentFromFile(file, user?.id || '')
+      addDocument(document)
+      setShowUpload(false)
 
-  const handleFiles = useCallback(async (files: FileList | File[]) => {
-    setUploading(true)
-    for (const file of Array.from(files)) {
-      await processFile(file)
-    }
-    setUploading(false)
-  }, [processFile])
+      try {
+        const result = await parseDocument(file)
+        updateDocument(document.id, {
+          raw_content: result.raw_content,
+          structured_content: result.structured_content,
+          word_count: result.word_count,
+          teaching_plan: result.teaching_plan,
+          status: 'ready',
+        })
+        toast('success', `《${document.title}》解析完成`)
+        navigate(`/documents/${document.id}`)
+      } catch (error) {
+        updateDocument(document.id, { status: 'error' })
+        toast('error', `解析失败：${error instanceof Error ? error.message : '未知错误'}`)
+      }
+    },
+    [user, addDocument, updateDocument, navigate]
+  )
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragActive(false)
-    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files)
-  }, [handleFiles])
+  const handleFiles = useCallback(
+    async (files: FileList | File[]) => {
+      setUploading(true)
+      for (const file of Array.from(files)) {
+        await processFile(file)
+      }
+      setUploading(false)
+    },
+    [processFile]
+  )
 
-  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault()
+      setDragActive(false)
+      if (event.dataTransfer.files.length > 0) {
+        handleFiles(event.dataTransfer.files)
+      }
+    },
+    [handleFiles]
+  )
 
-  const handleDelete = (doc: Document) => {
-    removeDocument(doc.id)
-    toast('success', `已删除文档《${doc.title}》`)
-    setMenuOpenId(null)
+  const handleDelete = (document: Document) => {
+    removeDocument(document.id)
+    toast('success', `已删除文档《${document.title}》`)
     setDeleteTarget(null)
+    setMenuOpenId(null)
   }
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div className="flex items-center justify-between">
+      <section className="dm-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">文档中心</h1>
-          <p className="text-sm text-gray-500 mt-1">管理你的文档，上传新文档开始评审</p>
+          <span className="dm-kicker">Document Hub</span>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900">文档中心</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-7 text-gray-600">
+            在这里管理待评审的教研案。上传后系统会自动提取结构化教学信息，后续评审和聊天室都以这里的文档为来源。
+          </p>
         </div>
-        <button
-          onClick={() => setShowUpload(true)}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors cursor-pointer border-0"
-        >
+        <Button onClick={() => setShowUpload(true)} className="shrink-0">
           <Upload className="h-4 w-4" />
           上传文档
-        </button>
-      </div>
+        </Button>
+      </section>
 
-      {showUpload && (
+      <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="dm-hero-card rounded-[28px] px-6 py-6">
+          <div className="relative z-[1]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">Upload Flow</p>
+                <h2 className="mt-2 text-2xl font-bold text-gray-900">把文档整理好，后面的评审和研讨才有依据。</h2>
+                <p className="mt-3 max-w-xl text-sm leading-7 text-gray-600">
+                  支持 PDF、Word、Markdown 和 TXT。解析完成后可直接进入文档详情、发起评审或进入关联研讨。
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="dm-panel rounded-2xl px-4 py-4">
+                <p className="text-xs text-gray-500">全部文档</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900">{documents.length}</p>
+              </div>
+              <div className="dm-panel rounded-2xl px-4 py-4">
+                <p className="text-xs text-gray-500">可评审</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900">{readyCount}</p>
+              </div>
+              <div className="dm-panel rounded-2xl px-4 py-4">
+                <p className="text-xs text-gray-500">处理中</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900">{parsingCount}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <Card className="rounded-[28px]">
+          <CardContent className="space-y-4 p-6">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">筛选与检索</p>
+              <p className="mt-1 text-xs leading-6 text-gray-500">先缩小范围，再进入具体文档，不要在长列表里找目标。</p>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="搜索文档标题..."
+                className="pl-9"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'all' as const, label: `全部 (${documents.length})` },
+                { key: 'ready' as const, label: `已就绪 (${readyCount})` },
+                { key: 'parsing' as const, label: `处理中 (${parsingCount})` },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={cn(
+                    'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+                    activeTab === tab.key
+                      ? 'border-primary-200 bg-primary-50 text-primary-600'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {showUpload ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => !uploading && setShowUpload(false)}>
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">上传文档</h3>
-              <button onClick={() => !uploading && setShowUpload(false)} className="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer">
+          <div
+            className="dm-panel mx-4 w-full max-w-xl rounded-[28px] p-6 shadow-xl animate-slide-up"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">上传文档</h3>
+                <p className="mt-1 text-xs text-gray-500">上传后会自动解析为可评审的结构化内容。</p>
+              </div>
+              <button
+                onClick={() => !uploading && setShowUpload(false)}
+                className="rounded-md border-0 bg-transparent p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 cursor-pointer"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
+
             <div
               className={cn(
-                'rounded-xl border-2 border-dashed p-8 text-center transition-all',
-                dragActive ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-gray-400',
-                uploading && 'opacity-60 pointer-events-none'
+                'rounded-[24px] border-2 border-dashed p-10 text-center transition-all',
+                dragActive ? 'border-primary-500 bg-primary-50' : 'border-gray-300 bg-white/70 hover:border-primary-300 hover:bg-primary-50/50',
+                uploading && 'pointer-events-none opacity-70'
               )}
-              onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
+              onDragOver={(event) => {
+                event.preventDefault()
+                setDragActive(true)
+              }}
               onDragLeave={() => setDragActive(false)}
               onDrop={handleDrop}
             >
-              <CloudUpload className="h-12 w-12 mx-auto text-gray-400 mb-3" />
+              <CloudUpload className="mx-auto mb-4 h-12 w-12 text-primary-500" />
               {uploading ? (
-                <p className="text-sm font-medium text-primary-600">正在解析文档...</p>
+                <>
+                  <p className="text-sm font-medium text-primary-600">正在解析文档...</p>
+                  <p className="mt-2 text-xs text-gray-500">系统会尽量提取课题、目标、重点、难点和教学过程。</p>
+                </>
               ) : (
                 <>
-                  <p className="text-sm font-medium text-gray-700">拖拽文件到这里</p>
-                  <p className="text-xs text-gray-500 mt-1">或点击选择文件</p>
+                  <p className="text-base font-semibold text-gray-900">拖拽文件到这里</p>
+                  <p className="mt-2 text-sm text-gray-500">或点击按钮手动选择文件</p>
                 </>
               )}
-              <p className="text-xs text-gray-400 mt-3">支持 PDF / Word / Markdown / TXT，最大 20MB</p>
+
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <Badge variant="info">PDF</Badge>
+                <Badge variant="info">DOCX</Badge>
+                <Badge variant="info">MD</Badge>
+                <Badge variant="info">TXT</Badge>
+              </div>
+
+              <p className="mt-4 text-xs text-gray-400">单个文件不超过 20MB</p>
+
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".pdf,.docx,.md,.txt"
                 className="hidden"
                 multiple
-                onChange={(e) => e.target.files && handleFiles(e.target.files)}
+                onChange={(event) => event.target.files && handleFiles(event.target.files)}
               />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="mt-4 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 cursor-pointer border-0 disabled:opacity-50"
-              >
+
+              <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="mt-5">
                 选择文件
-              </button>
+              </Button>
             </div>
           </div>
         </div>
-      )}
-
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索文档..."
-            className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm outline-none transition-all focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-          />
-        </div>
-        <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
-          {(['all', 'ready', 'parsing'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer border-0',
-                activeTab === tab ? 'bg-primary-100 text-primary-600' : 'text-gray-500 hover:text-gray-700 bg-transparent'
-              )}
-            >
-              {tab === 'all' ? `全部 (${documents.length})` : tab === 'ready' ? '已就绪' : '解析中'}
-            </button>
-          ))}
-        </div>
-      </div>
+      ) : null}
 
       {filteredDocs.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
-          <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-          <p className="text-gray-500 font-medium">
-            {documents.length === 0 ? '还没有文档' : '没有找到匹配的文档'}
-          </p>
-          <p className="text-sm text-gray-400 mt-1">上传你的第一份文档，开始多角色评审之旅</p>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="mt-4 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 cursor-pointer border-0"
-          >
-            <Upload className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-            上传文档
-          </button>
-        </div>
+        <Card className="rounded-[28px]">
+          <CardContent className="py-16 text-center">
+            <FileText className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+            <p className="text-base font-medium text-gray-600">
+              {documents.length === 0 ? '还没有文档' : '没有找到匹配的文档'}
+            </p>
+            <p className="mt-2 text-sm text-gray-400">上传第一份教研案后，就可以继续发起评审和聊天室研讨。</p>
+            <Button onClick={() => setShowUpload(true)} className="mt-5">
+              <Upload className="h-4 w-4" />
+              上传文档
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredDocs.map((doc) => {
-            const Icon = FILE_ICONS[doc.file_type] || FileText
-            const colorClass = FILE_COLORS[doc.file_type] || 'text-gray-500 bg-gray-50'
-            const status = STATUS_MAP[doc.status]
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredDocs.map((document) => {
+            const Icon = FILE_ICONS[document.file_type] || FileText
+            const fileColor = FILE_COLORS[document.file_type] || 'bg-gray-100 text-gray-500'
+            const statusMeta = STATUS_META[document.status]
+
             return (
-              <div key={doc.id} className="group relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 transform-gpu">
-                <Link to={`/documents/${doc.id}`} className="absolute inset-0 z-0" />
-                <div className="relative z-10 pointer-events-none">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={cn('rounded-lg p-2.5', colorClass)}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="relative pointer-events-auto">
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpenId(menuOpenId === doc.id ? null : doc.id) }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer transition-opacity"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                      {menuOpenId === doc.id && (
-                        <div className="absolute right-0 top-6 w-32 rounded-lg border border-gray-200 bg-white py-1 shadow-lg z-20" onMouseDown={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteTarget(doc); setMenuOpenId(null) }}
-                            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer border-0 bg-transparent"
+              <div key={document.id} className="group relative">
+                <Link to={`/documents/${document.id}`} className="absolute inset-0 z-0 rounded-[28px]" />
+
+                <Card className="dm-panel-hover relative z-[1] h-full rounded-[28px]">
+                  <CardContent className="pointer-events-none flex h-full flex-col p-5">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className={cn('rounded-2xl p-3 shadow-sm', fileColor)}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+
+                      <div className="pointer-events-auto relative">
+                        <button
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            setMenuOpenId(menuOpenId === document.id ? null : document.id)
+                          }}
+                          className="rounded-md border-0 bg-transparent p-1 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-gray-600 group-hover:opacity-100 cursor-pointer"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+
+                        {menuOpenId === document.id ? (
+                          <div
+                            className="absolute right-0 top-8 z-20 w-36 rounded-2xl border border-gray-200 bg-white py-1 shadow-lg"
+                            onMouseDown={(event) => event.stopPropagation()}
                           >
-                            <Trash2 className="h-3.5 w-3.5" /> 删除
-                          </button>
-                        </div>
+                            <button
+                              onClick={(event) => {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setDeleteTarget(document)
+                                setMenuOpenId(null)
+                              }}
+                              className="flex w-full items-center gap-2 border-0 bg-transparent px-4 py-2 text-sm text-red-600 hover:bg-red-50 cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              删除文档
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h2 className="line-clamp-2 text-lg font-semibold text-gray-900">{document.title}</h2>
+                      <p className="text-sm text-gray-500">
+                        {document.file_type.toUpperCase()} · {document.word_count ? `${document.word_count.toLocaleString()} 字` : formatFileSize(document.file_size)}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-2">
+                      <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                      {document.review_count > 0 ? <Badge variant="default">{document.review_count} 次评审</Badge> : null}
+                    </div>
+
+                    <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        最近更新 {formatTimeAgo(document.updated_at || document.created_at)}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
+                      <span className="text-xs font-medium text-primary-600">查看详情</span>
+                      {document.status === 'ready' ? (
+                        <Link
+                          to={`/reviews/create?doc=${document.id}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="pointer-events-auto inline-flex items-center gap-1 text-xs font-medium text-primary-600 no-underline hover:text-primary-700"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5" />
+                          发起评审
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-400">等待解析完成</span>
                       )}
                     </div>
-                  </div>
-
-                  <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">{doc.title}</h3>
-                  <p className="text-xs text-gray-500 mb-3">
-                    {doc.file_type.toUpperCase()} · {doc.word_count ? `${doc.word_count.toLocaleString()} 字` : formatFileSize(doc.file_size)}
-                    {doc.review_count > 0 && ` · ${doc.review_count} 次评审`}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', status.color)}>
-                      {status.label}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                      <Clock className="h-3 w-3" />
-                      {formatTimeAgo(doc.created_at)}
-                    </span>
-                  </div>
-
-                  {doc.status === 'ready' && (
-                    <div className="mt-3 flex gap-2 border-t border-gray-100 pt-3 pointer-events-auto">
-                      <Link
-                        to={`/reviews/create?doc=${doc.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-1 text-xs text-primary-600 font-medium no-underline hover:text-primary-700"
-                      >
-                        <ClipboardCheck className="h-3 w-3" /> 发起评审
-                      </Link>
-                    </div>
-                  )}
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             )
           })}
-        </div>
+        </section>
       )}
 
       <ConfirmDialog

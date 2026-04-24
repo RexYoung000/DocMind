@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ChatRoom, ChatMessage, ChatPoll, Bookmark, DiscussionSummary, Agent, MessageStatus } from '@/types'
+import type {
+  ChatRoom,
+  ChatMessage,
+  ChatPoll,
+  Bookmark,
+  DiscussionSummary,
+  Agent,
+  MessageStatus,
+  DiscussionState,
+  ChatAgendaItem,
+} from '@/types'
 import { useActivityStore } from './activityStore'
 
 interface ChatState {
@@ -31,6 +41,24 @@ interface ChatState {
   castVote: (pollId: string, optionId: string, voterId: string) => void
 
   addSummary: (summary: DiscussionSummary) => void
+
+  updateDiscussionState: (roomId: string, state: DiscussionState) => void
+  setAgenda: (roomId: string, agenda: ChatAgendaItem[], currentTopicId?: string) => void
+  activateAgendaTopic: (roomId: string, topicId: string) => void
+  completeAgendaTopic: (roomId: string, topicId: string, nextTopicId?: string) => void
+}
+
+function normalizeRoom(room: ChatRoom): ChatRoom {
+  return {
+    ...room,
+    discussionState: room.status === 'closed' ? 'closed' : room.discussionState || 'idle',
+    pendingTopics: room.pendingTopics || [],
+    stats: {
+      messageCount: room.stats?.messageCount || 0,
+      bookmarkCount: room.stats?.bookmarkCount || 0,
+      lastActiveAt: room.stats?.lastActiveAt || room.created_at,
+    },
+  }
 }
 
 export const useChatStore = create<ChatState>()(
@@ -43,20 +71,21 @@ export const useChatStore = create<ChatState>()(
       summaries: [],
 
       createRoom: (room) => {
+        const normalizedRoom = normalizeRoom(room)
         set((state) => ({
-          rooms: [room, ...state.rooms],
-          messages: { ...state.messages, [room.id]: [] },
+          rooms: [normalizedRoom, ...state.rooms],
+          messages: { ...state.messages, [normalizedRoom.id]: [] },
         }))
         useActivityStore.getState().addActivity({
           type: 'chat',
-          text: `创建了聊天室「${room.topic}」`,
+          text: `创建了聊天室《${normalizedRoom.topic}》`,
         })
       },
 
       closeRoom: (id) => {
         set((state) => ({
-          rooms: state.rooms.map((r) =>
-            r.id === id ? { ...r, status: 'closed' as const } : r
+          rooms: state.rooms.map((room) =>
+            room.id === id ? { ...room, status: 'closed', discussionState: 'closed' } : room
           ),
         }))
       },
@@ -65,19 +94,42 @@ export const useChatStore = create<ChatState>()(
         set((state) => {
           const { [id]: _, ...restMessages } = state.messages
           return {
-            rooms: state.rooms.filter((r) => r.id !== id),
+            rooms: state.rooms.filter((room) => room.id !== id),
             messages: restMessages,
           }
         })
       },
 
-      getRoom: (id) => get().rooms.find((r) => r.id === id),
+      getRoom: (id) => get().rooms.find((room) => room.id === id),
 
       addMessage: (roomId, message) => {
         set((state) => ({
+          rooms: state.rooms.map((room) =>
+            room.id === roomId
+              ? {
+                  ...room,
+                  stats: {
+                    messageCount: (room.stats?.messageCount || 0) + 1,
+                    bookmarkCount: room.stats?.bookmarkCount || 0,
+                    lastActiveAt: message.created_at,
+                  },
+                }
+              : room
+          ),
           messages: {
             ...state.messages,
             [roomId]: [...(state.messages[roomId] || []), message],
+          },
+        }))
+      },
+
+      updateMessageStatus: (roomId, messageId, status) => {
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [roomId]: (state.messages[roomId] || []).map((message) =>
+              message.id === messageId ? { ...message, status } : message
+            ),
           },
         }))
       },
@@ -86,22 +138,11 @@ export const useChatStore = create<ChatState>()(
 
       addParticipant: (roomId, agent) => {
         set((state) => ({
-          rooms: state.rooms.map((r) =>
-            r.id === roomId && !r.participants.some((p) => p.id === agent.id)
-              ? { ...r, participants: [...r.participants, agent] }
-              : r
+          rooms: state.rooms.map((room) =>
+            room.id === roomId && !room.participants.some((participant) => participant.id === agent.id)
+              ? { ...room, participants: [...room.participants, agent] }
+              : room
           ),
-        }))
-      },
-
-      updateMessageStatus: (roomId, messageId, status) => {
-        set((state) => ({
-          messages: {
-            ...state.messages,
-            [roomId]: (state.messages[roomId] || []).map((m) =>
-              m.id === messageId ? { ...m, status } : m
-            ),
-          },
         }))
       },
 
@@ -109,17 +150,19 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           messages: {
             ...state.messages,
-            [roomId]: (state.messages[roomId] || []).map((m) => {
-              if (m.id !== messageId) return m
-              const reactions = [...(m.reactions || [])]
-              const existing = reactions.find((r) => r.emoji === emoji)
+            [roomId]: (state.messages[roomId] || []).map((message) => {
+              if (message.id !== messageId) return message
+              const reactions = [...(message.reactions || [])]
+              const existing = reactions.find((reaction) => reaction.emoji === emoji)
+
               if (existing) {
                 if (isUser) existing.userReacted = true
                 if (agentId && !existing.agentIds.includes(agentId)) existing.agentIds.push(agentId)
               } else {
                 reactions.push({ emoji, userReacted: isUser, agentIds: agentId ? [agentId] : [] })
               }
-              return { ...m, reactions }
+
+              return { ...message, reactions }
             }),
           },
         }))
@@ -129,28 +172,63 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           messages: {
             ...state.messages,
-            [roomId]: (state.messages[roomId] || []).map((m) => {
-              if (m.id !== messageId) return m
-              const reactions = (m.reactions || []).map((r) => {
-                if (r.emoji !== emoji) return r
-                return {
-                  ...r,
-                  userReacted: isUser ? false : r.userReacted,
-                  agentIds: agentId ? r.agentIds.filter((id) => id !== agentId) : r.agentIds,
-                }
-              }).filter((r) => r.userReacted || r.agentIds.length > 0)
-              return { ...m, reactions }
+            [roomId]: (state.messages[roomId] || []).map((message) => {
+              if (message.id !== messageId) return message
+
+              const reactions = (message.reactions || [])
+                .map((reaction) => {
+                  if (reaction.emoji !== emoji) return reaction
+                  return {
+                    ...reaction,
+                    userReacted: isUser ? false : reaction.userReacted,
+                    agentIds: agentId ? reaction.agentIds.filter((id) => id !== agentId) : reaction.agentIds,
+                  }
+                })
+                .filter((reaction) => reaction.userReacted || reaction.agentIds.length > 0)
+
+              return { ...message, reactions }
             }),
           },
         }))
       },
 
       addBookmark: (bookmark) => {
-        set((state) => ({ bookmarks: [...state.bookmarks, bookmark] }))
+        set((state) => ({
+          bookmarks: [...state.bookmarks, bookmark],
+          rooms: state.rooms.map((room) =>
+            room.id === bookmark.roomId
+              ? {
+                  ...room,
+                  stats: {
+                    messageCount: room.stats?.messageCount || 0,
+                    lastActiveAt: room.stats?.lastActiveAt,
+                    bookmarkCount: (room.stats?.bookmarkCount || 0) + 1,
+                  },
+                }
+              : room
+          ),
+        }))
       },
 
       removeBookmark: (bookmarkId) => {
-        set((state) => ({ bookmarks: state.bookmarks.filter((b) => b.id !== bookmarkId) }))
+        const target = get().bookmarks.find((bookmark) => bookmark.id === bookmarkId)
+        set((state) => ({
+          bookmarks: state.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId),
+          rooms: !target
+            ? state.rooms
+            : state.rooms.map((room) =>
+                room.id === target.roomId
+                  ? {
+                      ...room,
+                      stats: {
+                        messageCount: room.stats?.messageCount || 0,
+                        lastActiveAt: room.stats?.lastActiveAt,
+                        bookmarkCount: Math.max(0, (room.stats?.bookmarkCount || 0) - 1),
+                      },
+                    }
+                  : room
+              ),
+        }))
       },
 
       createPoll: (poll) => {
@@ -159,15 +237,15 @@ export const useChatStore = create<ChatState>()(
 
       castVote: (pollId, optionId, voterId) => {
         set((state) => ({
-          polls: state.polls.map((p) => {
-            if (p.id !== pollId) return p
+          polls: state.polls.map((poll) => {
+            if (poll.id !== pollId) return poll
             return {
-              ...p,
-              options: p.options.map((o) => {
-                const without = o.voterIds.filter((v) => v !== voterId)
-                return o.id === optionId
-                  ? { ...o, voterIds: [...without, voterId] }
-                  : { ...o, voterIds: without }
+              ...poll,
+              options: poll.options.map((option) => {
+                const withoutVoter = option.voterIds.filter((voter) => voter !== voterId)
+                return option.id === optionId
+                  ? { ...option, voterIds: [...withoutVoter, voterId] }
+                  : { ...option, voterIds: withoutVoter }
               }),
             }
           }),
@@ -177,7 +255,73 @@ export const useChatStore = create<ChatState>()(
       addSummary: (summary) => {
         set((state) => ({ summaries: [...state.summaries, summary] }))
       },
+
+      updateDiscussionState: (roomId, discussionState) => {
+        set((state) => ({
+          rooms: state.rooms.map((room) =>
+            room.id === roomId ? { ...room, discussionState } : room
+          ),
+        }))
+      },
+
+      setAgenda: (roomId, pendingTopics, currentTopicId) => {
+        set((state) => ({
+          rooms: state.rooms.map((room) =>
+            room.id === roomId
+              ? {
+                  ...room,
+                  pendingTopics,
+                  currentTopicId: currentTopicId || pendingTopics.find((topic) => topic.status === 'active')?.id,
+                }
+              : room
+          ),
+        }))
+      },
+
+      activateAgendaTopic: (roomId, topicId) => {
+        set((state) => ({
+          rooms: state.rooms.map((room) =>
+            room.id === roomId
+              ? {
+                  ...room,
+                  currentTopicId: topicId,
+                  pendingTopics: (room.pendingTopics || []).map((topic) => ({
+                    ...topic,
+                    status: topic.id === topicId ? 'active' : topic.status === 'active' ? 'pending' : topic.status,
+                  })),
+                }
+              : room
+          ),
+        }))
+      },
+
+      completeAgendaTopic: (roomId, topicId, nextTopicId) => {
+        set((state) => ({
+          rooms: state.rooms.map((room) =>
+            room.id === roomId
+              ? {
+                  ...room,
+                  currentTopicId: nextTopicId,
+                  pendingTopics: (room.pendingTopics || []).map((topic) => ({
+                    ...topic,
+                    status: topic.id === topicId ? 'done' : topic.id === nextTopicId ? 'active' : topic.status,
+                  })),
+                }
+              : room
+          ),
+        }))
+      },
     }),
-    { name: 'docmind-chat' }
+    {
+      name: 'docmind-chat',
+      merge: (persisted, current) => {
+        const typed = persisted as Partial<ChatState>
+        return {
+          ...current,
+          ...typed,
+          rooms: (typed.rooms || []).map((room) => normalizeRoom(room)),
+        }
+      },
+    }
   )
 )
