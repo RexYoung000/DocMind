@@ -63,9 +63,9 @@ function buildChatSystemPrompt(agent: Agent, docContext: string, otherAgents: Ag
   const modeGuide = mode === 'debate'
     ? `
 当前是辩论模式：
-- 不要每个人都给一份完整评审，要像真实教研会一样接话、反驳、追问。
+- 不要每个人都给一份完整评审，要像真实讨论组一样接话、反驳、追问。
 - 如果不同意，请点名回应上一位角色，说清楚“我不同意哪一点”和“为什么”。
-- 允许保留分歧，但必须落到教案、课堂环节、学生理解或评价方式上。`
+- 允许保留分歧，但必须落到具体论据、内容细节或判断标准上。`
     : mode === 'moderated'
       ? `
 当前是引导式讨论：
@@ -83,10 +83,10 @@ ${modeGuide}
 ${docContext}
 
 记住：
-1. 你正在一个教研讨论群里发言，语气要像真实群聊，不要像写长报告。
+1. 你正在一个讨论组里发言，语气要像真实群聊，不要像写长报告。
 2. 回答控制在 2-4 句，优先回应别人已经说过的话。
-3. 不要泛泛而谈，要尽量落到教学设计、课堂执行、学生理解、评价反馈这些具体点上。
-4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问“有没有文档”。`
+3. 不要泛泛而谈，要尽量落到具体论据、内容细节或评价标准上。
+4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问”有没有文档”。`
 }
 
 function uniqueDocuments(documents: Array<Document | null | undefined>) {
@@ -408,7 +408,7 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
     `讨论焦点：“${turn.focus.slice(0, 80)}”。`,
     target,
     '不要重新完整评审全文，不要复述背景，不要输出报告格式。',
-    '像真实教研群发言：2-4句，有态度，有具体理由。',
+    '像真实讨论组发言：2-4句，有态度，有具体理由。',
   ]
 
   const intentRule = (() => {
@@ -420,11 +420,11 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
       case 'challenge':
         return '必须明确说出你不同意或担心哪一点，并给出替代判断。可以点名，但不要吵架。'
       case 'support':
-        return '先说你赞同哪一点，再补一个别人没说到的证据或课堂后果。'
+        return '先说你赞同哪一点，再补一个别人没说到的证据或推论。'
       case 'question':
         return '提出一个会推动讨论继续往下走的问题，问题后面补一句你为什么问。'
       case 'evidence':
-        return '尽量引用文档、评审结论或课堂环节作为证据，不要空泛。'
+        return '尽量引用文档、评审结论或具体内容作为证据，不要空泛。'
       case 'synthesize':
         return mode === 'debate'
           ? '请收束当前分歧：哪一点已有共识，哪一点还需要继续争。最后给一个下一步动作。'

@@ -28,7 +28,8 @@
       "Bash(npx npm-check *)",
       "Bash(python3 -c ' *)",
       "Bash(git *)",
-      "WebFetch(domain:api-docs.deepseek.com)"
+      "WebFetch(domain:api-docs.deepseek.com)",
+      "Bash(npm install *)"
     ]
   }
 }

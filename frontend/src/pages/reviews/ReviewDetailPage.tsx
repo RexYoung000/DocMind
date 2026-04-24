@@ -19,7 +19,7 @@ import { useReviewStore } from '@/stores/reviewStore'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
 import { RadarChart } from '@/components/ui/RadarChart'
-import { TEACHING_DIMENSIONS } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 import type { AgentReview, Suggestion } from '@/types'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -113,17 +113,17 @@ export default function ReviewDetailPage() {
   const strengths = (summary?.strengths || []).slice(0, 4)
   const painPoints = (summary?.pain_points || []).slice(0, 4)
 
-  const teacherReviews = completedReviews.filter((item) => {
+  const analystReviews = completedReviews.filter((item) => {
     const agent = review.agents?.find((candidate) => candidate.id === item.agent_id)
-    return !agent?.category || agent.category === 'teacher'
+    return !agent?.category || agent.category === 'analyst'
   })
-  const studentReviews = completedReviews.filter((item) => {
+  const engineerReviews = completedReviews.filter((item) => {
     const agent = review.agents?.find((candidate) => candidate.id === item.agent_id)
-    return agent?.category === 'student'
+    return agent?.category === 'engineer'
   })
-  const parentReviews = completedReviews.filter((item) => {
+  const creativeReviews = completedReviews.filter((item) => {
     const agent = review.agents?.find((candidate) => candidate.id === item.agent_id)
-    return agent?.category === 'parent'
+    return agent?.category === 'creative' || agent?.category === 'teacher' || agent?.category === 'student' || agent?.category === 'parent'
   })
 
   const radarDatasets = useMemo(
@@ -133,7 +133,7 @@ export default function ReviewDetailPage() {
         return {
           label: item.agent_name,
           color: item.agent_color,
-          scores: TEACHING_DIMENSIONS.map((dimension) => dimensionMap.get(dimension) || 0),
+          scores: REVIEW_DIMENSIONS.map((dimension) => dimensionMap.get(dimension) || 0),
         }
       }),
     [completedReviews]
@@ -141,7 +141,7 @@ export default function ReviewDetailPage() {
 
   const avgDimScores = useMemo(
     () =>
-      TEACHING_DIMENSIONS.map((dimension) => {
+      REVIEW_DIMENSIONS.map((dimension) => {
         const scores = completedReviews.map((item) => item.dimensions.find((entry) => entry.name === dimension)?.score || 0)
 
         if (!scores.length) {
@@ -160,7 +160,7 @@ export default function ReviewDetailPage() {
 
   const buildReportMarkdown = () => {
     const lines = [
-      `# 《${docTitle}》教研评审报告`,
+      `# 《${docTitle}》评审报告`,
       '',
       `- **评审时间**：${new Date(review.created_at).toLocaleDateString('zh-CN')}`,
       `- **参与角色总数**：${agentReviews.length}`,
@@ -184,7 +184,7 @@ export default function ReviewDetailPage() {
 
     if (completedReviews.length > 0) {
       lines.push(
-        '## 六维度评分概览',
+        '## 多维度评分概览',
         '',
         '| 维度 | 平均分 | 最低分 | 最高分 |',
         '|------|--------|--------|--------|',
@@ -263,12 +263,12 @@ export default function ReviewDetailPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `教研评审报告_${docTitle}_${new Date(review.created_at).toLocaleDateString('zh-CN')}.md`
+    link.download = `评审报告_${docTitle}_${new Date(review.created_at).toLocaleDateString('zh-CN')}.md`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    toast('success', '教研评审报告已下载')
+    toast('success', '评审报告已下载')
   }
 
   const handleCopy = async () => {
@@ -385,7 +385,7 @@ export default function ReviewDetailPage() {
                 Review Report Ready
               </span>
               <h1 className="mt-3 max-w-4xl text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-                《{docTitle}》教研评审报告
+                《{docTitle}》评审报告
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-gray-600">
                 这不是一堆零散意见，而是从多角色分析中压缩出的结果阅读态。先看总体诊断和关键痛点，再往下读建议、共识、争议和分角色细评。
@@ -395,7 +395,7 @@ export default function ReviewDetailPage() {
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleCreateChat}>
                 <MessageCircle className="h-4 w-4" />
-                教研研讨
+                进入研讨
               </Button>
               <Button variant="secondary" onClick={handleExport}>
                 <Download className="h-4 w-4" />
@@ -463,7 +463,7 @@ export default function ReviewDetailPage() {
               </div>
 
               <div className="rounded-[24px] border border-gray-100 bg-gray-50/80 p-4">
-                <p className="mb-3 text-sm font-semibold text-gray-700">六维度均值</p>
+                <p className="mb-3 text-sm font-semibold text-gray-700">多维度均值</p>
                 <div className="space-y-2">
                   {avgDimScores.map((item) => (
                     <div key={item.name} className="flex items-center gap-2 text-xs">
@@ -497,7 +497,7 @@ export default function ReviewDetailPage() {
         {radarDatasets.length > 0 ? (
           <Card className="rounded-[28px]">
             <CardContent className="flex flex-col items-center justify-center p-6">
-              <p className="mb-3 text-sm font-semibold text-gray-700">六维度雷达图对比</p>
+              <p className="mb-3 text-sm font-semibold text-gray-700">多维度雷达图对比</p>
               <RadarChart datasets={radarDatasets} size={300} />
             </CardContent>
           </Card>
@@ -639,9 +639,9 @@ export default function ReviewDetailPage() {
             <h2 className="text-lg font-semibold text-gray-900">各角色评审观点</h2>
           </div>
 
-          {renderAgentCards(teacherReviews, '教师视角', '👩‍🏫')}
-          {renderAgentCards(studentReviews, '学生视角', '🧑‍🎓')}
-          {renderAgentCards(parentReviews, '家长视角', '👨‍👩‍👧')}
+          {renderAgentCards(analystReviews, '分析师视角', '📊')}
+          {renderAgentCards(engineerReviews, '工程师视角', '⚙️')}
+          {renderAgentCards(creativeReviews, '综合视角', '🎨')}
         </section>
       ) : null}
     </div>

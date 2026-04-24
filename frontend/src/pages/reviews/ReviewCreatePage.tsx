@@ -20,7 +20,8 @@ import { isModelConfigValid, useSettingsStore } from '@/stores/settingsStore'
 import { createFailedAgentReview, executeAgentReview, generateSummary } from '@/services/reviewEngine'
 import { toast } from '@/components/ui/Toast'
 import { createId } from '@/utils/id'
-import type { Agent, AgentReview, Review, TeachingDimension } from '@/types'
+import type { Agent, AgentReview, Review } from '@/types'
+import { REVIEW_DIMENSIONS } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
@@ -43,7 +44,7 @@ const DIMENSION_STEPS = [
 const REVIEW_STAGES = [
   {
     title: '解析文档结构',
-    description: '先把教研案的目标、重点、难点和过程抓出来，建立统一语境。',
+    description: '先把文档的目标、重点和结构提取出来，建立统一的评审语境。',
   },
   {
     title: '对齐角色视角',
@@ -51,7 +52,7 @@ const REVIEW_STAGES = [
   },
   {
     title: '逐维度深度分析',
-    description: '围绕课程设计、知识链、目标、重点、难点和学习梯度逐项推进。',
+    description: '围绕逻辑结构、内容深度、表达清晰等多个维度逐项推进。',
   },
   {
     title: '聚合共识与分歧',
@@ -64,214 +65,99 @@ const REVIEW_STAGES = [
 ] as const
 
 const REVIEW_PERSONA_COPY: Record<string, { active: string[]; done: string[]; error: string[] }> = {
-  teacher: {
+  analyst: {
     active: [
-      '正在翻看教案，把课堂流程顺一遍。',
-      '正在对着课件做标记，看看哪里需要提醒。',
-      '正在写评审草稿，先把最关键的感受记下来。',
+      '正在梳理文档结构，理顺各部分之间的逻辑关系。',
+      '正在做标注，标记出表达不够清晰的地方。',
+      '正在写评审草稿，先把最关键的问题记下来。',
     ],
     done: [
-      '已经把这一轮教学判断收束成了完整意见。',
-      '刚刚给出了可落地的教研结论。',
+      '已经把这一轮分析判断收束成了完整意见。',
+      '刚刚给出了可落地的评审结论。',
     ],
     error: [
       '这一轮判断被打断了，需要重新组织观点。',
     ],
   },
-  student: {
+  engineer: {
     active: [
-      '正在把自己代入课堂，看看哪里会听迷糊。',
-      '正在翻练习题，想想自己会不会卡住。',
-      '正在小声嘀咕：这一步我真的懂了吗？',
+      '正在从技术角度审视内容，验证论据的充分性。',
+      '正在检查论证链条，看看有没有逻辑断点。',
+      '正在逐条核验内容的实用性和可操作性。',
     ],
     done: [
-      '已经把“学生到底会卡在哪里”说清楚了。',
-      '刚刚从学生体验角度给出了完整反馈。',
+      '已经把技术角度的判断说清楚了。',
+      '刚刚从实用性角度给出了完整反馈。',
     ],
     error: [
-      '这一轮学生视角的判断没顺利产出，还得再试一次。',
+      '这一轮工程视角的判断没顺利产出，还得再试一次。',
     ],
   },
-  parent: {
+  creative: {
     active: [
-      '正在翻看课堂安排，关心孩子能不能跟上。',
-      '正在看课后负担，会不会有点吃力。',
-      '正在记下家长最关心的学习效果。',
+      '正在从创新角度审视内容，寻找突破点。',
+      '正在思考内容的表达方式是否可以更有新意。',
+      '正在记下关于创新性和差异化最有价值的发现。',
     ],
     done: [
-      '已经把家长最关心的风险和收益提炼出来了。',
-      '刚刚完成一轮从学习效果和负担视角的判断。',
+      '已经把创新视角的核心发现提炼出来了。',
+      '刚刚完成一轮从创意和表达角度的判断。',
     ],
     error: [
-      '这一轮家长视角没能稳定生成，需要重新梳理。',
+      '这一轮创意视角没能稳定生成，需要重新梳理。',
     ],
   },
 }
 
 type AgentActivityCopy = { status: string; active: string[]; detail: string[]; done: string }
 
-const AGENT_ACTIVITY_COPY: Record<string, AgentActivityCopy> = {
-  周老师: {
-    status: '正在排课堂流程',
-    active: [
-      '周老师正在把课件摊开，先看导入、活动和收尾能不能接上。',
-      '周老师拿着流程表，一边画箭头一边看课堂节奏。',
-      '周老师正在核对每个环节的时间，会不会前松后紧。',
-    ],
-    detail: [
-      '她会先看整节课像不像一条顺路走完的路线。',
-      '她比较在意课堂结构，不太喜欢环节突然跳走。',
-      '她会把“不顺”的地方直接标出来。',
-    ],
-    done: '周老师已经把课堂流程意见写好了。',
-  },
-  林老师: {
-    status: '正在翻知识脉络',
-    active: [
-      '林老师正在翻前后知识点，找有没有断开的地方。',
-      '林老师把概念排成一条线，看看学生能不能接得住。',
-      '林老师正在对照旧知识，检查这节课有没有跳太快。',
-    ],
-    detail: [
-      '他会特别留意“前面学过什么、后面要接什么”。',
-      '他不急着下结论，会先把知识链顺清楚。',
-      '他会把断点和跳步单独挑出来。',
-    ],
-    done: '林老师已经把知识链意见梳理好了。',
-  },
-  陈老师: {
-    status: '正在核对目标',
-    active: [
-      '陈老师正在拿着目标清单逐条核对。',
-      '陈老师正在看目标是不是说得清、做得到。',
-      '陈老师把目标和课堂活动一项项对上号。',
-    ],
-    detail: [
-      '他标准很严，模糊目标通常会被直接圈出来。',
-      '他会追问：这个环节到底对应哪个目标？',
-      '他更关心目标能不能被学生真正达成。',
-    ],
-    done: '陈老师已经核完教学目标。',
-  },
-  王老师: {
-    status: '正在圈课堂重点',
-    active: [
-      '王老师正在用红笔圈出这节课最该讲透的地方。',
-      '王老师正在看时间有没有花在真正的重点上。',
-      '王老师把材料里的主线内容先拎出来。',
-    ],
-    detail: [
-      '他会直接问：重点够不够突出？',
-      '他不太喜欢面面俱到，更看重课堂聚焦。',
-      '他会把“抢时间但不重要”的内容挑出来。',
-    ],
-    done: '王老师已经圈出课程重点意见。',
-  },
-  张老师: {
-    status: '正在拆课程难点',
-    active: [
-      '张老师正在把难点拆成学生能迈过去的小台阶。',
-      '张老师正在想学生会在哪一步卡住。',
-      '张老师给难点突破换了几种更顺的说法。',
-    ],
-    detail: [
-      '她会多站在学生理解障碍上想一会儿。',
-      '她喜欢把大难点拆成几个小坡。',
-      '她会特别看有没有给学生搭脚手架。',
-    ],
-    done: '张老师已经拆完课程难点。',
-  },
-  李老师: {
-    status: '正在看学习坡度',
-    active: [
-      '李老师正在翻练习梯度表，看学生能不能一路跟上。',
-      '李老师把基础题和提升题排排队，看看坡度陡不陡。',
-      '李老师正在看课堂节奏会不会忽快忽慢。',
-    ],
-    detail: [
-      '她会照顾不同层次学生的节奏。',
-      '她不只看会不会，还看学生怎么一步步会。',
-      '她会把跳得太快的地方放慢来看。',
-    ],
-    done: '李老师已经看完学习梯度。',
-  },
-  李教授: {
-    status: '正在写评审批注',
-    active: [
-      '李教授正在翻看材料，先把表达不清的地方圈出来。',
-      '李教授正在斟酌评审措辞，尽量把意见写得准确一点。',
-      '李教授正在对照学术写作习惯，检查论述是不是站得住。',
-    ],
-    detail: [
-      '他会更在意表达是否清楚、论证是否稳。',
-      '他不是只看课堂热闹，更看文字背后的逻辑。',
-      '他会把含糊、重复、跳跃的表述单独记下来。',
-    ],
-    done: '李教授已经写好学术表达意见。',
-  },
-}
+const AGENT_ACTIVITY_COPY: Record<string, AgentActivityCopy> = {}
 
-const FOCUS_ACTIVITY_COPY: Partial<Record<TeachingDimension, AgentActivityCopy>> = {
-  课程设计: {
-    status: '正在看课件结构',
-    active: ['正在摊开课件，看每个环节接得顺不顺。', '正在给课堂流程画小箭头。', '正在检查导入、活动和收尾是不是连得上。'],
-    detail: ['会先看整节课的起承转合。', '会特别留意课堂节奏有没有断。', '会把不顺的环节先圈出来。'],
-    done: '已经写好课程设计意见。',
+const FOCUS_ACTIVITY_COPY: Partial<Record<ReviewDimension, AgentActivityCopy>> = {
+  逻辑结构: {
+    status: '正在看文档结构',
+    active: ['正在分析文档的整体框架。', '正在检查各部分的逻辑衔接。', '正在评估结构的完整性和连贯性。'],
+    detail: ['会先看整体框架是否清晰。', '会特别留意结构是否有缺失。', '会把逻辑断层的地方标出来。'],
+    done: '已经写好结构分析意见。',
   },
-  知识链: {
-    status: '正在翻知识脉络',
-    active: ['正在翻前后知识点，找有没有断开的地方。', '正在把概念顺成一条线。', '正在看这节课和前置知识接得牢不牢。'],
-    detail: ['会先把前置知识和后续延伸连起来看。', '会留意学生有没有足够的知识垫脚石。', '会把知识跳步单独标出来。'],
-    done: '已经梳理好知识链意见。',
+  内容深度: {
+    status: '正在评估内容深度',
+    active: ['正在判断内容的深入程度。', '正在检查论证的充分性。', '正在评估是否有足够的支撑材料。'],
+    detail: ['会看内容是否停留在表面。', '会检查关键论点是否充分展开。', '会标注需要深化的部分。'],
+    done: '已经完成内容深度评估。',
   },
-  教学目标: {
-    status: '正在核对目标',
-    active: ['正在拿着目标清单逐条核对。', '正在看目标是不是说得清、做得到。', '正在把目标和课堂活动对上号。'],
-    detail: ['会盯着目标是否清楚可验证。', '会追问每个活动服务哪个目标。', '会把空泛目标重新拎出来。'],
-    done: '已经核完教学目标。',
+  表达清晰: {
+    status: '正在检查表达',
+    active: ['正在逐段阅读，标记表达不清之处。', '正在检查用词是否准确。', '正在评估整体可读性。'],
+    detail: ['会找出表述含糊的地方。', '会留意专业术语是否解释到位。', '会将不够通顺的段落单独标注。'],
+    done: '已经完成表达清晰度审查。',
   },
-  课程重点: {
-    status: '正在圈重点',
-    active: ['正在用红笔圈出这节课最该讲透的地方。', '正在看重点有没有被课堂时间照顾到。', '正在把主线内容从材料里拎出来。'],
-    detail: ['会判断课堂时间有没有花在刀刃上。', '会看重点是否真的被讲透。', '会把不够聚焦的部分挑出来。'],
-    done: '已经圈出课程重点意见。',
+  论据充分: {
+    status: '正在核对论据',
+    active: ['正在逐条核验论据的有效性。', '正在检查论据是否支撑论点。', '正在评估数据来源的可靠性。'],
+    detail: ['会先看论据是否充足。', '会判断论据与论点的关联强度。', '会标记缺乏支撑的断言。'],
+    done: '已经完成论据充分性评估。',
   },
-  课程难点: {
-    status: '正在拆难点',
-    active: ['正在把难点拆成学生能迈过去的小台阶。', '正在想学生会在哪一步卡住。', '正在给难点突破找更顺的说法。'],
-    detail: ['会顺着学生可能卡住的位置往回看。', '会检查有没有足够的脚手架。', '会把大难点拆成小台阶。'],
-    done: '已经拆完课程难点。',
+  创新性: {
+    status: '正在评估创新点',
+    active: ['正在寻找内容中的创新亮点。', '正在判断观点的独特性。', '正在评估创新点的实际价值。'],
+    detail: ['会区分真正的创新和重新表述。', '会看创新点是否具有实际意义。', '会把最亮眼的创新点圈出来。'],
+    done: '已经完成创新性评估。',
   },
-  学习梯度: {
-    status: '正在看学习坡度',
-    active: ['正在翻练习梯度表，看学生能不能一路跟上。', '正在把基础题和提升题排排队。', '正在看课堂节奏会不会忽快忽慢。'],
-    detail: ['会照顾不同层次学生的学习节奏。', '会看坡度是不是突然变陡。', '会把过快的过渡单独记下来。'],
-    done: '已经看完学习梯度。',
+  实用性: {
+    status: '正在评估实用性',
+    active: ['正在判断内容的可操作性。', '正在评估建议的落地难度。', '正在检查是否有明确的行动指引。'],
+    detail: ['会判断内容是否具有实际应用价值。', '会看建议是否具体可执行。', '会把缺乏可行性的部分标出来。'],
+    done: '已经完成实用性评估。',
   },
 }
 
 function buildFallbackActivityCopy(agent: Agent): AgentActivityCopy {
-  const expertise = agent.focusDimension || agent.expertise[0] || '材料'
-  if (agent.category === 'student') {
-    return {
-      status: '正在代入课堂',
-      active: [`${agent.name}正在把自己放进课堂里，看看哪里会听不懂。`, `${agent.name}翻着练习题，想想自己会不会卡住。`, `${agent.name}正在小声嘀咕：这一步我真的懂了吗？`],
-      detail: ['会用很真实的学生感受来说话。', '会先说哪里好懂、哪里不好懂。', '会把课堂里容易走神的点说出来。'],
-      done: `${agent.name}已经写完学生视角反馈。`,
-    }
-  }
-  if (agent.category === 'parent') {
-    return {
-      status: '正在看学习效果',
-      active: [`${agent.name}正在翻课堂安排，关心孩子能不能跟上。`, `${agent.name}正在看课后负担，会不会有点吃力。`, `${agent.name}正在记下家长最关心的学习效果。`],
-      detail: ['会更关心孩子学完有没有收获。', '会顺带看看压力是不是太大。', '会把家长能看懂的风险写出来。'],
-      done: `${agent.name}已经写完家长视角意见。`,
-    }
-  }
+  const expertise = agent.focusDimension || agent.expertise[0] || '文档内容'
   return {
-    status: `正在看${expertise}`,
+    status: `正在分析${expertise}`,
     active: [`${agent.name}正在翻看${expertise}相关内容。`, `${agent.name}正在给${expertise}做批注。`, `${agent.name}正在把${expertise}里的问题记到草稿里。`],
-    detail: [`会结合“${agent.behavior.style}”把意见写得更像本人。`, `会围绕「${expertise}」说清楚自己的判断。`, agent.behavior.catchphrase ? `脑子里还挂着那句：“${agent.behavior.catchphrase}”` : '会把观察点整理成几句清楚的话。'],
+    detail: [`会结合”${agent.behavior.style}”把意见写得更像本人。`, `会围绕「${expertise}」说清楚自己的判断。`, agent.behavior.catchphrase ? `脑子里还挂着那句：”${agent.behavior.catchphrase}”` : '会把观察点整理成几句清楚的话。'],
     done: `${agent.name}已经写完「${expertise}」相关意见。`,
   }
 }
@@ -287,7 +173,7 @@ function getStableSeed(value: string) {
 }
 
 function pickPersonaLine(category: string | undefined, status: ReviewProgressItem['status'], seed: number) {
-  const persona = REVIEW_PERSONA_COPY[category || 'teacher'] || REVIEW_PERSONA_COPY.teacher
+  const persona = REVIEW_PERSONA_COPY[category || 'analyst'] || REVIEW_PERSONA_COPY.analyst
   const lines =
     status === 'reviewing'
       ? persona.active
@@ -646,7 +532,7 @@ export default function ReviewCreatePage() {
           <Check className="mx-auto mb-4 h-12 w-12 text-emerald-500" />
           <h2 className="text-xl font-bold text-gray-900">报告已经准备好</h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-gray-600">
-            强化后的报告会先给出总体诊断和关键痛点，再下钻到聚合建议与分角色细评，便于你继续进入教研研讨。
+            报告会先给出总体诊断和关键痛点，再下钻到聚合建议与分角色细评，便于你继续进入研讨。
           </p>
           <Link to={`/reviews/${reviewId}`} className="mt-6 inline-flex no-underline">
             <Button size="lg">
@@ -668,9 +554,9 @@ export default function ReviewCreatePage() {
             <Sparkles className="h-3.5 w-3.5" />
             Review Running
             </span>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900">正在生成教研评审</h1>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900">正在生成评审</h1>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-gray-600">
-              评审过程不再只是简单等待。系统会先解构教案，再按角色视角和六个维度逐步推进，最后压缩成可执行的诊断与建议。
+              评审过程不再只是简单等待。系统会先解析文档结构，再按角色视角和多个维度逐步推进，最后压缩成可执行的诊断与建议。
             </p>
           </div>
 
@@ -708,7 +594,7 @@ export default function ReviewCreatePage() {
             <div className="mt-6">
               <div className="mb-3 flex items-center gap-2 text-sm text-gray-500">
                 <Loader2 className="h-4 w-4 animate-spin text-gray-700" />
-                <span>系统正在推进本轮教研评审流程</span>
+                <span>系统正在推进本轮评审流程</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-gray-200/80">
                 <div

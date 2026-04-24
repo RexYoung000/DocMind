@@ -50,7 +50,7 @@ export default function ReviewListPage() {
         <div className="dm-hero-card rounded-[28px] px-6 py-6">
           <div className="relative z-[1]">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">Review Snapshot</p>
-            <h2 className="mt-2 text-2xl font-bold text-gray-900">把最近的教研判断整理成可继续行动的结果。</h2>
+            <h2 className="mt-2 text-2xl font-bold text-gray-900">把最近的评审结果整理成可继续行动的计划。</h2>
             <p className="mt-3 max-w-xl text-sm leading-7 text-gray-600">
               完成态报告适合看诊断和建议，进行中报告适合观察模型输出是否稳定。所有后续聊天室都应该从这里出发，而不是脱离评审结果空聊。
             </p>

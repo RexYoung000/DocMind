@@ -26,8 +26,8 @@ import { formatTimeAgo } from '@/utils/format'
 const QUICK_ACTIONS = [
   {
     icon: Upload,
-    label: '上传教研案',
-    description: '支持 PDF、Word、Markdown 和 TXT，上传后会自动解析教学要素。',
+    label: '上传文档',
+    description: '支持 PDF、Word、Markdown 和 TXT，上传后会自动提取结构化信息。',
     path: '/documents',
     badge: '文档入口',
     tone: 'bg-blue-50 text-blue-600',
@@ -35,7 +35,7 @@ const QUICK_ACTIONS = [
   {
     icon: Bot,
     label: '新增角色',
-    description: '从模板挑选，或创建更适合你学科场景的评审角色。',
+    description: '从模板挑选，或根据需求创建自定义评审角色。',
     path: '/agents',
     badge: '角色配置',
     tone: 'bg-violet-50 text-violet-600',
@@ -137,10 +137,10 @@ export default function DashboardPage() {
           <div className="space-y-3">
             <div>
               <h1 className="max-w-4xl text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-                {user?.name || '体验用户'}，今天先处理最有价值的教学问题。
+                {user?.name || '体验用户'}，今天先处理最有价值的工作。
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-gray-600 sm:text-[15px]">
-                先上传教研案，再让不同角色从目标、难点、课堂节奏和学生理解这些角度给出更深的判断。完成评审后，可直接进入聊天室继续推进争议点。
+                先上传文档，再让不同角色从多维度给出专业判断。完成评审后，可直接进入聊天室继续推进争议点。
               </p>
             </div>
 

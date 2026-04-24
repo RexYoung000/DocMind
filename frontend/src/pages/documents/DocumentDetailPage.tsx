@@ -186,7 +186,7 @@ export default function DocumentDetailPage() {
           {document.teaching_plan ? (
             <Card className="rounded-[28px]">
               <CardHeader>
-                <h2 className="text-sm font-semibold text-gray-900">识别出的教学要素</h2>
+                <h2 className="text-sm font-semibold text-gray-900">文档识别信息</h2>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {document.teaching_plan.topic ? (
@@ -215,13 +215,13 @@ export default function DocumentDetailPage() {
                 ) : null}
                 {document.teaching_plan.keyPoints?.length ? (
                   <div>
-                    <p className="text-xs text-gray-500">教学重点</p>
+                    <p className="text-xs text-gray-500">重点</p>
                     <p className="mt-1 leading-7 text-gray-700">{document.teaching_plan.keyPoints.join('；')}</p>
                   </div>
                 ) : null}
                 {document.teaching_plan.difficulties?.length ? (
                   <div>
-                    <p className="text-xs text-gray-500">教学难点</p>
+                    <p className="text-xs text-gray-500">难点</p>
                     <p className="mt-1 leading-7 text-gray-700">{document.teaching_plan.difficulties.join('；')}</p>
                   </div>
                 ) : null}

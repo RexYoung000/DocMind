@@ -14,21 +14,24 @@ import { chatCompletion, LLMError } from '@/services/llmService'
 import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createId } from '@/utils/id'
-import type { Agent, AgentTemplate, AgentColor, AgentCategory, TeachingDimension } from '@/types'
-import { TEACHING_DIMENSIONS } from '@/types'
+import type { Agent, AgentTemplate, AgentColor, AgentCategory, ReviewDimension } from '@/types'
+import { REVIEW_DIMENSIONS, TEACHING_DIMENSIONS } from '@/types'
 
 const TEMPLATE_GROUPS: { label: string; icon: string; ids: string[] }[] = [
-  { label: '教研老师', icon: '📐', ids: ['tpl-edu-1', 'tpl-edu-2', 'tpl-edu-3', 'tpl-edu-4', 'tpl-edu-5', 'tpl-edu-6'] },
-  { label: '学生视角', icon: '🎒', ids: ['tpl-stu-1', 'tpl-stu-2', 'tpl-stu-3'] },
-  { label: '家长视角', icon: '👨‍👩‍👧', ids: ['tpl-par-1', 'tpl-par-2', 'tpl-par-3'] },
+  { label: '分析评估', icon: '📊', ids: ['tpl-edu-1', 'tpl-edu-2', 'tpl-edu-3', 'tpl-edu-4', 'tpl-edu-5', 'tpl-edu-6'] },
+  { label: '用户视角', icon: '👤', ids: ['tpl-stu-1', 'tpl-stu-2', 'tpl-stu-3'] },
+  { label: '外部视角', icon: '👁️', ids: ['tpl-par-1', 'tpl-par-2', 'tpl-par-3'] },
 ]
 
 const ALL_COLORS: AgentColor[] = ['indigo', 'violet', 'pink', 'orange', 'teal', 'sky', 'slate', 'green', 'rose', 'amber', 'emerald', 'cyan']
 
 const CATEGORY_OPTIONS: { value: AgentCategory; label: string; icon: string }[] = [
-  { value: 'teacher', label: '教研老师', icon: '👨‍🏫' },
-  { value: 'student', label: '学生', icon: '🎒' },
-  { value: 'parent', label: '家长', icon: '👨‍👩‍👧' },
+  { value: 'analyst', label: '分析师', icon: '📊' },
+  { value: 'engineer', label: '工程师', icon: '⚙️' },
+  { value: 'creative', label: '创意者', icon: '🎨' },
+  { value: 'teacher', label: '教学者', icon: '👨‍🏫' },
+  { value: 'student', label: '学习者', icon: '🎒' },
+  { value: 'parent', label: '关注者', icon: '👨‍👩‍👧' },
 ]
 
 // === MD Import/Export ===
@@ -92,8 +95,10 @@ function parseAgentMD(md: string): Partial<Agent> | null {
     avatar: getStr('avatar'),
     tagline: getStr('tagline'),
     color: ALL_COLORS.includes(colorVal as AgentColor) ? (colorVal as AgentColor) : 'indigo',
-    category: ['teacher', 'student', 'parent'].includes(categoryVal) ? (categoryVal as AgentCategory) : undefined,
-    focusDimension: (TEACHING_DIMENSIONS as readonly string[]).includes(getStr('focusDimension')) ? (getStr('focusDimension') as TeachingDimension) : undefined,
+    category: ['analyst', 'engineer', 'creative', 'teacher', 'student', 'parent'].includes(categoryVal) ? (categoryVal as AgentCategory) : undefined,
+    focusDimension: (REVIEW_DIMENSIONS as readonly string[]).includes(getStr('focusDimension')) || (TEACHING_DIMENSIONS as readonly string[]).includes(getStr('focusDimension'))
+      ? (getStr('focusDimension') as ReviewDimension)
+      : undefined,
     source: (getStr('source') === 'template' ? 'template' : 'custom') as Agent['source'],
     expertise,
     personality: {
@@ -766,12 +771,12 @@ E. 让用户自由描述
   "avatar": "一个代表此角色的 emoji",
   "tagline": "一句话角色标签",
   "color": "从 indigo/violet/pink/orange/teal/sky/slate/green/rose/amber/emerald/cyan 中选一个",
-  "category": "teacher 或 student 或 parent",
-  "focusDimension": "课程设计/知识链/教学目标/课程重点/课程难点/学习梯度 中的一个（仅教研老师需要）",
+  "category": "analyst / engineer / creative / teacher / student / parent",
+  "focusDimension": "逻辑结构/内容深度/表达清晰/论据充分/创新性/实用性 中的一个",
   "personality": { "directness": 3, "strictness": 4, "humor": 2, "empathy": 3 },
   "expertise": ["专长1", "专长2", "专长3", "专长4"],
   "behavior": { "style": "说话风格描述", "catchphrase": "口头禅（有性格特色）" },
-  "system_prompt": "完整的系统提示词，包含角色身份、说话方式、专业背景、评审原则。要明确不评价课件交互逻辑和功能设计，专注于教研内容。"
+  "system_prompt": "完整的系统提示词，包含角色身份、说话方式、专业背景、评审原则。"
 }
 \`\`\`
 
@@ -781,11 +786,11 @@ E. 让用户自由描述
 - 给出的选项要用 A/B/C/D 标记，方便选择
 - 如果用户说"随机"或"帮我选"，你就随机组合一个
 - 在最后一步之前，不要输出任何 JSON
-- 角色必须聚焦教研案评审，不评价课件交互和功能设计`
+- 角色必须聚焦文档内容评审`
 
-const RANDOM_AGENT_PROMPT = `你是教研评审平台的角色创建助手。请随机生成一个有特色的教研案评审角色。
+const RANDOM_AGENT_PROMPT = `你是评审平台的角色创建助手。请随机生成一个有特色的评审角色。
 
-随机选择一种角色类型（教研老师/学生/家长），随机组合性格、说话风格、关注维度，生成一个独特的教育领域评审角色。
+随机组合性格、说话风格、关注维度，生成一个独特的评审角色。
 
 请严格按以下 JSON 格式输出（仅输出 JSON，不要其他内容）：
 {
@@ -793,12 +798,12 @@ const RANDOM_AGENT_PROMPT = `你是教研评审平台的角色创建助手。请
   "avatar": "一个代表此角色的 emoji",
   "tagline": "一句话角色标签",
   "color": "从 indigo/violet/pink/orange/teal/sky/slate/green/rose/amber/emerald/cyan 中随机选一个",
-  "category": "teacher 或 student 或 parent",
-  "focusDimension": "课程设计/知识链/教学目标/课程重点/课程难点/学习梯度 中的一个（仅 teacher 需要，其他留空字符串）",
+  "category": "analyst / engineer / creative / teacher / student / parent",
+  "focusDimension": "逻辑结构/内容深度/表达清晰/论据充分/创新性/实用性 中的一个",
   "personality": { "directness": 随机1-5, "strictness": 随机1-5, "humor": 随机1-5, "empathy": 随机1-5 },
   "expertise": ["专长1", "专长2", "专长3"],
   "behavior": { "style": "说话风格描述", "catchphrase": "有个性的口头禅" },
-  "system_prompt": "完整的系统提示词，包含教育角色身份、说话方式和评审原则。明确不评价课件交互逻辑。"
+  "system_prompt": "完整的系统提示词，包含角色身份、说话方式和评审原则。"
 }`
 
 interface AIMsg { role: 'ai' | 'user'; content: string }
