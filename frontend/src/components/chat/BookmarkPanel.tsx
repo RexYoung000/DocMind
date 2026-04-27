@@ -67,21 +67,3 @@ export function BookmarkPanel({ bookmarks, messages, onRemove, onExport, onClose
     </div>
   )
 }
-
-export function exportBookmarksAsMarkdown(
-  bookmarks: Bookmark[],
-  messages: ChatMessage[],
-  roomTopic: string,
-): string {
-  const lines = [`# 收藏观点 — ${roomTopic}`, '', `> 导出时间：${new Date().toLocaleString('zh-CN')}`, '']
-  for (const b of bookmarks) {
-    const msg = messages.find((m) => m.id === b.messageId)
-    if (!msg) continue
-    lines.push(`## ${msg.sender_name}`)
-    lines.push('')
-    lines.push(msg.content)
-    if (b.note) lines.push(``, `*备注：${b.note}*`)
-    lines.push('', '---', '')
-  }
-  return lines.join('\n')
-}

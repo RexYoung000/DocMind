@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Settings,
   Plus,
@@ -51,6 +51,13 @@ function getDefaultForm(): FormValues {
   }
 }
 
+function getFormFromProfile(profile: SavedModelProfile): FormValues {
+  return {
+    profileName: profile.name,
+    ...profile.config,
+  }
+}
+
 function TestConnectionButton() {
   const [testing, setTesting] = useState(false)
   return (
@@ -84,9 +91,12 @@ export default function SettingsPage() {
     applyProfile,
   } = useSettingsStore()
 
-  const [form, setForm] = useState<FormValues>(getDefaultForm())
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
+  const initialProfile = activeProfileId
+    ? profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
+    : profiles[0]
+  const [form, setForm] = useState<FormValues>(() => initialProfile ? getFormFromProfile(initialProfile) : getDefaultForm())
+  const [selectedId, setSelectedId] = useState<string | null>(initialProfile?.id ?? null)
+  const [isCreating, setIsCreating] = useState(profiles.length === 0)
   const [showApiKey, setShowApiKey] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -122,27 +132,9 @@ export default function SettingsPage() {
   const selectProfile = useCallback((profile: SavedModelProfile) => {
     setSelectedId(profile.id)
     setIsCreating(false)
-    setForm({
-      profileName: profile.name,
-      ...profile.config,
-    })
+    setForm(getFormFromProfile(profile))
     setErrors({})
   }, [])
-
-  useEffect(() => {
-    if (profiles.length === 0) {
-      startCreate()
-      return
-    }
-    const active = activeProfileId
-      ? profiles.find((p) => p.id === activeProfileId)
-      : null
-    if (active) {
-      selectProfile(active)
-    } else {
-      selectProfile(profiles[0])
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateField = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))

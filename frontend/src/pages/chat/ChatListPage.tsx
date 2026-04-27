@@ -11,7 +11,38 @@ import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createId } from '@/utils/id'
 import { formatTimeAgo } from '@/utils/format'
-import type { ChatRoom, DiscussionMode } from '@/types'
+import { DEFAULT_CHAT_ROOM_STRATEGY } from '@/types'
+import type { ChatRoom, DiscussionMode, ContextDepth, InitiativeLevel, ConflictLevel, RoomTone, FeedbackLevel } from '@/types'
+
+const CONTEXT_DEPTH_OPTIONS: Array<{ value: ContextDepth; label: string }> = [
+  { value: 'fast', label: '快速' },
+  { value: 'deep', label: '深度' },
+  { value: 'long-document', label: '长文档' },
+]
+
+const INITIATIVE_OPTIONS: Array<{ value: InitiativeLevel; label: string }> = [
+  { value: 'low', label: '低' },
+  { value: 'standard', label: '标准' },
+  { value: 'high', label: '高' },
+]
+
+const CONFLICT_OPTIONS: Array<{ value: ConflictLevel; label: string }> = [
+  { value: 'soft', label: '温和' },
+  { value: 'balanced', label: '平衡' },
+  { value: 'intense', label: '激烈' },
+]
+
+const ROOM_TONE_OPTIONS: Array<{ value: RoomTone; label: string }> = [
+  { value: 'review-meeting', label: '专业评审会' },
+  { value: 'brainstorm', label: '热烈头脑风暴' },
+  { value: 'teaching-seminar', label: '教学研讨课堂' },
+  { value: 'product-review', label: '产品评审会' },
+]
+
+const FEEDBACK_OPTIONS: Array<{ value: FeedbackLevel; label: string }> = [
+  { value: 'simple', label: '简洁' },
+  { value: 'full', label: '完整' },
+]
 
 export default function ChatListPage() {
   const navigate = useNavigate()
@@ -32,6 +63,11 @@ export default function ChatListPage() {
   const [newTopic, setNewTopic] = useState('')
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
   const [discussionMode, setDiscussionMode] = useState<DiscussionMode>('free')
+  const [contextDepth, setContextDepth] = useState<ContextDepth>(DEFAULT_CHAT_ROOM_STRATEGY.contextDepth)
+  const [initiativeLevel, setInitiativeLevel] = useState<InitiativeLevel>(DEFAULT_CHAT_ROOM_STRATEGY.initiativeLevel)
+  const [conflictLevel, setConflictLevel] = useState<ConflictLevel>(DEFAULT_CHAT_ROOM_STRATEGY.conflictLevel)
+  const [roomTone, setRoomTone] = useState<RoomTone>(DEFAULT_CHAT_ROOM_STRATEGY.roomTone)
+  const [feedbackLevel, setFeedbackLevel] = useState<FeedbackLevel>(DEFAULT_CHAT_ROOM_STRATEGY.feedbackLevel)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ChatRoom | null>(null)
   const handledReviewRef = useRef<string | null>(null)
@@ -57,6 +93,10 @@ export default function ChatListPage() {
       status: 'active',
       participants,
       discussionMode: 'moderated',
+      strategy: {
+        ...DEFAULT_CHAT_ROOM_STRATEGY,
+        discussionMode: 'moderated',
+      },
       discussionState: 'idle',
       topicTags: [
         ...(review.summary?.pain_points || []),
@@ -98,6 +138,11 @@ export default function ChatListPage() {
     setNewTopic('')
     setSelectedAgentIds([])
     setDiscussionMode('free')
+    setContextDepth(DEFAULT_CHAT_ROOM_STRATEGY.contextDepth)
+    setInitiativeLevel(DEFAULT_CHAT_ROOM_STRATEGY.initiativeLevel)
+    setConflictLevel(DEFAULT_CHAT_ROOM_STRATEGY.conflictLevel)
+    setRoomTone(DEFAULT_CHAT_ROOM_STRATEGY.roomTone)
+    setFeedbackLevel(DEFAULT_CHAT_ROOM_STRATEGY.feedbackLevel)
     setShowCreateModal(true)
   }
 
@@ -115,6 +160,15 @@ export default function ChatListPage() {
     const participants = agents.filter((a) => selectedAgentIds.includes(a.id))
     const topic = newTopic.trim() || '自由讨论'
     const modeLabel = discussionMode === 'debate' ? '辩论' : discussionMode === 'moderated' ? '引导' : '自由'
+    const strategy = {
+      ...DEFAULT_CHAT_ROOM_STRATEGY,
+      discussionMode,
+      contextDepth,
+      initiativeLevel,
+      conflictLevel,
+      roomTone,
+      feedbackLevel,
+    }
     const room: ChatRoom = {
       id: createId(),
       document_id: '',
@@ -123,6 +177,7 @@ export default function ChatListPage() {
       status: 'active',
       participants,
       discussionMode,
+      strategy,
       discussionState: 'idle',
       created_at: new Date().toISOString(),
     }
@@ -330,7 +385,7 @@ export default function ChatListPage() {
 
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl animate-slide-up mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl animate-slide-up mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-semibold text-gray-900">新建聊天室</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer">
@@ -372,6 +427,98 @@ export default function ChatListPage() {
                       <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">上下文深度</label>
+                  <select
+                    value={contextDepth}
+                    onChange={(event) => setContextDepth(event.target.value as ContextDepth)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-all focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  >
+                    {CONTEXT_DEPTH_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">产品气质</label>
+                  <select
+                    value={roomTone}
+                    onChange={(event) => setRoomTone(event.target.value as RoomTone)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition-all focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  >
+                    {ROOM_TONE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">主动性</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {INITIATIVE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setInitiativeLevel(option.value)}
+                        className={cn(
+                          'rounded-lg border px-2 py-2 text-xs font-medium transition-colors cursor-pointer',
+                          initiativeLevel === option.value
+                            ? 'border-primary-500 bg-primary-50 text-primary-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">冲突强度</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {CONFLICT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setConflictLevel(option.value)}
+                        className={cn(
+                          'rounded-lg border px-2 py-2 text-xs font-medium transition-colors cursor-pointer',
+                          conflictLevel === option.value
+                            ? 'border-primary-500 bg-primary-50 text-primary-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">过程反馈</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {FEEDBACK_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setFeedbackLevel(option.value)}
+                        className={cn(
+                          'rounded-lg border px-2 py-2 text-xs font-medium transition-colors cursor-pointer',
+                          feedbackLevel === option.value
+                            ? 'border-primary-500 bg-primary-50 text-primary-700'
+                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                  原文引用可用但不强制；身份边界默认按角色能力自动约束。
                 </div>
               </div>
 

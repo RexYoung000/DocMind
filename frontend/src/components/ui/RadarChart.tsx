@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { AGENT_COLORS } from '@/stores/agentStore'
 import type { AgentColor } from '@/types'
 import { REVIEW_DIMENSIONS } from '@/types'
@@ -21,10 +20,7 @@ export function RadarChart({ datasets, size = 280 }: RadarChartProps) {
   const cy = size / 2
   const maxR = size / 2 - 40
 
-  const angles = useMemo(() =>
-    dimensions.map((_, i) => (Math.PI * 2 * i) / n - Math.PI / 2),
-    [n]
-  )
+  const angles = dimensions.map((_, i) => (Math.PI * 2 * i) / n - Math.PI / 2)
 
   const getPoint = (angle: number, r: number) => ({
     x: cx + r * Math.cos(angle),

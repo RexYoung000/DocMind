@@ -151,6 +151,36 @@ export interface Controversy {
 export type DiscussionMode = 'free' | 'moderated' | 'debate'
 export type DiscussionState = 'idle' | 'kickoff' | 'discussing' | 'summarizing' | 'closed'
 
+export type ContextDepth = 'fast' | 'deep' | 'long-document'
+export type InitiativeLevel = 'low' | 'standard' | 'high'
+export type ConflictLevel = 'soft' | 'balanced' | 'intense'
+export type RoomTone = 'review-meeting' | 'brainstorm' | 'teaching-seminar' | 'product-review'
+export type FeedbackLevel = 'simple' | 'full'
+export type CitationPolicy = 'optional' | 'required' | 'none'
+export type IdentityBoundaryLevel = 'standard' | 'relaxed' | 'off'
+
+export interface ChatRoomStrategy {
+  discussionMode: DiscussionMode
+  contextDepth: ContextDepth
+  initiativeLevel: InitiativeLevel
+  conflictLevel: ConflictLevel
+  roomTone: RoomTone
+  feedbackLevel: FeedbackLevel
+  citationPolicy: CitationPolicy
+  identityBoundary: IdentityBoundaryLevel
+}
+
+export const DEFAULT_CHAT_ROOM_STRATEGY: ChatRoomStrategy = {
+  discussionMode: 'moderated',
+  contextDepth: 'deep',
+  initiativeLevel: 'standard',
+  conflictLevel: 'balanced',
+  roomTone: 'review-meeting',
+  feedbackLevel: 'full',
+  citationPolicy: 'optional',
+  identityBoundary: 'standard',
+}
+
 export interface ChatAgendaItem {
   id: string
   text: string
@@ -168,6 +198,7 @@ export interface ChatRoom {
   status: 'active' | 'closed'
   participants: Agent[]
   discussionMode?: DiscussionMode
+  strategy?: ChatRoomStrategy
   discussionState?: DiscussionState
   currentTopicId?: string
   pendingTopics?: ChatAgendaItem[]
@@ -181,6 +212,23 @@ export interface ChatRoom {
 }
 
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'failed'
+export type ChatMessageIntent = 'open' | 'support' | 'challenge' | 'evidence' | 'question' | 'synthesize' | 'progress'
+export type ChatMessageContextSource = 'document' | 'review' | 'chat_history' | 'agent_memory' | 'agent_experience'
+export type ChatMessageEvidenceLevel = 'quote' | 'review' | 'user' | 'inference' | 'experience'
+
+export interface ChatMessageRespondingTo {
+  agentId?: string
+  messageId?: string
+  label?: string
+}
+
+export interface ChatMessageCitation {
+  source: ChatMessageContextSource
+  title?: string
+  text?: string
+  documentId?: string
+  section?: string
+}
 
 export interface ChatMessageReaction {
   emoji: string
@@ -202,6 +250,11 @@ export interface ChatMessage {
   sender_name: string
   sender_color?: AgentColor
   content: string
+  intent?: ChatMessageIntent
+  respondingTo?: ChatMessageRespondingTo
+  contextSource?: ChatMessageContextSource
+  evidenceLevel?: ChatMessageEvidenceLevel
+  citations?: ChatMessageCitation[]
   quotes?: { text: string; section: string }[]
   reply_to?: string
   replyToMessage?: { senderName: string; content: string }

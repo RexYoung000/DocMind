@@ -249,7 +249,7 @@ test('聊天室会围绕议题自动开口并在附带文档后继续接话', as
   test.setTimeout(60000)
 
   await page.goto('/reviews/review-chat-1')
-  await page.getByRole('button', { name: '教研研讨' }).click()
+  await page.getByRole('button', { name: /进入聊天室|教研研讨/ }).click()
 
   await expect(page).toHaveURL(/\/chat\/.+/)
   await expect(page.getByText('讨论议程')).toBeVisible()
@@ -264,4 +264,17 @@ test('聊天室会围绕议题自动开口并在附带文档后继续接话', as
 
   await expect.poll(() => chatCallCount, { timeout: 12000 }).toBeGreaterThanOrEqual(3)
   await expect(page.getByText('我看完附带文档后更确定了，学生不是完全不会，而是缺一个示范翻译过程。')).toBeVisible()
+  await expect(page.getByText('基于文档').last()).toBeVisible()
+  await expect(page.getByText('1 个来源').last()).toBeVisible()
+
+  const strategyLog = await page.evaluate(() => {
+    const roomId = window.location.pathname.split('/').filter(Boolean).at(-1)
+    return JSON.parse(window.localStorage.getItem(`chat-strategy-log:${roomId}`) || '[]') as Array<{
+      eventType?: string
+      usedContext?: string[]
+    }>
+  })
+  expect(strategyLog.length).toBeGreaterThanOrEqual(3)
+  expect(strategyLog.some((entry) => entry.eventType === 'document_attached')).toBeTruthy()
+  expect(strategyLog.some((entry) => (entry.usedContext?.length ?? 0) > 0)).toBeTruthy()
 })

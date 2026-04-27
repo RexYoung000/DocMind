@@ -12,6 +12,7 @@ import type {
   ChatAgendaItem,
 } from '@/types'
 import { useActivityStore } from './activityStore'
+import { normalizeChatRoomStrategy } from '@/services/chatEngine/strategyTypes'
 
 interface ChatState {
   rooms: ChatRoom[]
@@ -49,8 +50,11 @@ interface ChatState {
 }
 
 function normalizeRoom(room: ChatRoom): ChatRoom {
+  const strategy = normalizeChatRoomStrategy(room.strategy, room.discussionMode)
   return {
     ...room,
+    strategy,
+    discussionMode: strategy.discussionMode,
     discussionState: room.status === 'closed' ? 'closed' : room.discussionState || 'idle',
     pendingTopics: room.pendingTopics || [],
     stats: {
@@ -92,7 +96,8 @@ export const useChatStore = create<ChatState>()(
 
       removeRoom: (id) => {
         set((state) => {
-          const { [id]: _, ...restMessages } = state.messages
+          const restMessages = { ...state.messages }
+          delete restMessages[id]
           return {
             rooms: state.rooms.filter((room) => room.id !== id),
             messages: restMessages,

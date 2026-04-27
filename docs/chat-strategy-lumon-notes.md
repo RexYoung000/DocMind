@@ -133,7 +133,7 @@ Lumon1 的 SSE 会发出多种事件：
 
 ### 3.2 第二阶段：补回合调度器
 
-- 新增 `discussionScheduler`
+- 新增 `turnPlanner` / `eventRouterV2`
 - 每轮最多 2-3 位角色
 - 每轮结束后生成一句 `roundSummary`
 - 如果用户插话，打断当前轮，进入新的用户驱动轮

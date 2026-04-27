@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Bot, Sparkles, Trash2, Edit3, X, RotateCcw, Recycle,
-  ChevronDown, ChevronRight, ChevronLeft, Send, Check, Dices, Wand2,
+  ChevronDown, ChevronRight, ChevronLeft, Send, Check, Dices,
   Download, Upload,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -332,32 +332,29 @@ function PresetAddModal({ initialTemplate, onClose, onSaved, embedded }: {
   const [step, setStep] = useState<'select' | 'edit'>(initialTemplate ? 'edit' : 'select')
 
   // Editable fields
-  const [name, setName] = useState('')
-  const [tagline, setTagline] = useState('')
-  const [avatar, setAvatar] = useState('')
-  const [color, setColor] = useState<AgentColor>('indigo')
-  const [expertise, setExpertise] = useState('')
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [directness, setDirectness] = useState(3)
-  const [strictness, setStrictness] = useState(3)
-  const [humor, setHumor] = useState(3)
-  const [empathy, setEmpathy] = useState(3)
+  const [name, setName] = useState(initialTemplate?.name || '')
+  const [tagline, setTagline] = useState(initialTemplate?.tagline || '')
+  const [avatar, setAvatar] = useState(initialTemplate?.avatar || '')
+  const [color, setColor] = useState<AgentColor>(initialTemplate?.color || 'indigo')
+  const [expertise, setExpertise] = useState(initialTemplate?.expertise.join('、') || '')
+  const [directness, setDirectness] = useState(initialTemplate?.personality.directness || 3)
+  const [strictness, setStrictness] = useState(initialTemplate?.personality.strictness || 3)
+  const [humor, setHumor] = useState(initialTemplate?.personality.humor || 3)
+  const [empathy, setEmpathy] = useState(initialTemplate?.personality.empathy || 3)
 
-  useEffect(() => {
-    if (selectedTpl) {
-      setName(selectedTpl.name)
-      setTagline(selectedTpl.tagline)
-      setAvatar(selectedTpl.avatar || '')
-      setColor(selectedTpl.color)
-      setExpertise(selectedTpl.expertise.join('、'))
-      setSystemPrompt(selectedTpl.description)
-      setDirectness(selectedTpl.personality.directness)
-      setStrictness(selectedTpl.personality.strictness)
-      setHumor(selectedTpl.personality.humor)
-      setEmpathy(selectedTpl.personality.empathy)
-      setStep('edit')
-    }
-  }, [selectedTpl])
+  const selectTemplate = (template: AgentTemplate) => {
+    setSelectedTpl(template)
+    setName(template.name)
+    setTagline(template.tagline)
+    setAvatar(template.avatar || '')
+    setColor(template.color)
+    setExpertise(template.expertise.join('、'))
+    setDirectness(template.personality.directness)
+    setStrictness(template.personality.strictness)
+    setHumor(template.personality.humor)
+    setEmpathy(template.personality.empathy)
+    setStep('edit')
+  }
 
   const handleSave = () => {
     if (!selectedTpl || !name.trim()) return
@@ -392,7 +389,7 @@ function PresetAddModal({ initialTemplate, onClose, onSaved, embedded }: {
               return (
                 <button
                   key={tpl.id}
-                  onClick={() => !added && setSelectedTpl(tpl)}
+                  onClick={() => !added && selectTemplate(tpl)}
                   disabled={added}
                   className={cn(
                     'flex items-center gap-3 rounded-xl border p-3 text-left transition-all cursor-pointer',
@@ -1146,15 +1143,12 @@ function UnifiedAddModal({
 
 export default function AgentListPage() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
   const templates = useAgentStore((s) => s.templates)
   const hiddenTemplateIds = useAgentStore((s) => s.hiddenTemplateIds)
   const agents = useAgentStore((s) => s.agents)
   const trashedAgents = useAgentStore((s) => s.trashedAgents)
-  const addAgent = useAgentStore((s) => s.addAgent)
   const removeAgent = useAgentStore((s) => s.removeAgent)
   const updateAgent = useAgentStore((s) => s.updateAgent)
-  const hideTemplate = useAgentStore((s) => s.hideTemplate)
   const restoreTemplate = useAgentStore((s) => s.restoreTemplate)
   const restoreAgent = useAgentStore((s) => s.restoreAgent)
   const permanentlyDeleteAgent = useAgentStore((s) => s.permanentlyDeleteAgent)

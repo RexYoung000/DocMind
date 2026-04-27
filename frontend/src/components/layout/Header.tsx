@@ -45,16 +45,17 @@ export function Header() {
   const themeMenuRef = useRef<HTMLDivElement>(null)
   const prevPathnameRef = useRef(location.pathname)
 
-  if (location.pathname !== prevPathnameRef.current) {
-    prevPathnameRef.current = location.pathname
-    if (mobileNavOpen) setMobileNavOpen(false)
-  }
-
   const openSearch = useCallback(() => setSearchOpen(true), [])
   const closeSearch = useCallback(() => setSearchOpen(false), [])
 
   const themeLabel = theme === 'light' ? '亮色模式' : theme === 'dark' ? '暗色模式' : '跟随系统'
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
+
+  useEffect(() => {
+    if (location.pathname === prevPathnameRef.current) return
+    prevPathnameRef.current = location.pathname
+    setMobileNavOpen(false)
+  }, [location.pathname])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

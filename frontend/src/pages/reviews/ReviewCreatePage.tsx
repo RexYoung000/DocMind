@@ -21,7 +21,6 @@ import { createFailedAgentReview, executeAgentReview, generateSummary } from '@/
 import { toast } from '@/components/ui/Toast'
 import { createId } from '@/utils/id'
 import type { Agent, AgentReview, Review, ReviewDimension } from '@/types'
-import { REVIEW_DIMENSIONS } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
@@ -32,14 +31,9 @@ type ReviewProgressItem = {
   dimensionsCompleted: number
 }
 
-const DIMENSION_STEPS = [
-  { emoji: '🧭', label: '解析教学框架', activeLabel: '正在对齐教案结构与课堂节奏' },
-  { emoji: '🧠', label: '梳理知识链', activeLabel: '正在检查概念衔接与迁移路径' },
-  { emoji: '🎯', label: '校准教学目标', activeLabel: '正在判断目标是否可达且可验证' },
-  { emoji: '📌', label: '聚焦课程重点', activeLabel: '正在确认重点是否真正突出' },
-  { emoji: '🪜', label: '拆解课程难点', activeLabel: '正在推演难点突破路径' },
-  { emoji: '📈', label: '评估学习梯度', activeLabel: '正在判断学生能否顺着节奏跟上' },
-] as const
+function getTimestampMs() {
+  return Date.now()
+}
 
 const REVIEW_STAGES = [
   {
@@ -380,7 +374,7 @@ export default function ReviewCreatePage() {
     if (!canStart || !selectedDoc) return
 
     setPhase('running')
-    setRunningStartedAt(Date.now())
+    setRunningStartedAt(getTimestampMs())
     setElapsedSeconds(0)
     abortRef.current = new AbortController()
 
@@ -506,9 +500,10 @@ export default function ReviewCreatePage() {
   }
 
   useEffect(() => {
+    const dimTimers = dimTimersRef.current
     return () => {
       abortRef.current?.abort()
-      Object.values(dimTimersRef.current).forEach((timer) => clearInterval(timer))
+      Object.values(dimTimers).forEach((timer) => clearInterval(timer))
     }
   }, [])
 

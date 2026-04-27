@@ -67,19 +67,6 @@ export function CommandPalette({ open, onClose }: Props) {
     ).slice(0, 12)
   }, [query, allCommands])
 
-  const prevOpenRef = useRef(open)
-  if (open && !prevOpenRef.current) {
-    setQuery('')
-    setActiveIndex(0)
-  }
-  prevOpenRef.current = open
-
-  const prevQueryRef = useRef(query)
-  if (query !== prevQueryRef.current) {
-    prevQueryRef.current = query
-    setActiveIndex(0)
-  }
-
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -130,7 +117,10 @@ export function CommandPalette({ open, onClose }: Props) {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setActiveIndex(0)
+            }}
             placeholder="搜索文档、角色、页面..."
             className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
           />

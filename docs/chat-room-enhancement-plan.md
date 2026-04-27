@@ -80,6 +80,8 @@
 
 **核心架构**: 将消息生成从"用户触发 → 串行回复"改为事件队列驱动
 
+> 当前实现说明：早期方案中的 `Scheduler` / `Reactor` 文件拆分已被新的策略模块替代。运行时代码现在使用 `eventRouterV2.ts`、`turnPlanner.ts`、`contextAssembler.ts`、`runtimeGuards.ts` 和 `ChatRoomPage.tsx` 集成；旧 `scheduler.ts`、`reactor.ts` 已删除。
+
 ```
 ┌──────────────────────────────────────┐
 │         ChatEngine (新文件)           │
@@ -91,16 +93,15 @@
 │  ├── RoleCollisionEvent              │
 │  └── TopicTriggerEvent               │
 │                                      │
-│  Scheduler                           │
-│  ├── 根据模式决定是否处理事件          │
-│  ├── 计算延迟时间                     │
-│  └── 控制并发（同时最多 1 个 Agent 输出）│
+│  Event Router + Turn Planner          │
+│  ├── 识别事件并排序                   │
+│  ├── 根据策略选择 Agent 与发言姿态      │
+│  └── 控制每轮发言数量                  │
 │                                      │
-│  Reactor                             │
-│  ├── 选择回复 Agent                   │
-│  ├── 构建 Prompt（含上文 + 角色关系）  │
-│  ├── 调用 LLM 生成                    │
-│  └── 检测是否触发后续事件              │
+│  Runtime Guards                       │
+│  ├── 组装分层上下文                   │
+│  ├── 校验身份边界与重复内容            │
+│  └── 记录策略日志                     │
 └──────────────────────────────────────┘
 ```
 
@@ -108,10 +109,11 @@
 
 | 文件 | 职责 |
 |------|------|
-| `services/chatEngine.ts` | 事件队列、调度器、反应器的主入口 |
 | `services/chatEngine/events.ts` | 事件类型定义与工厂 |
-| `services/chatEngine/scheduler.ts` | 根据模式调度事件，管理延迟和并发 |
-| `services/chatEngine/reactor.ts` | Agent 选择策略、Prompt 构建、LLM 调用 |
+| `services/chatEngine/eventRouterV2.ts` | 识别点名、文档、证据、困惑、冲突、议题推进等事件 |
+| `services/chatEngine/turnPlanner.ts` | 根据事件、模式、身份能力选择发言角色和发言姿态 |
+| `services/chatEngine/contextAssembler.ts` | 按上下文深度组装文档、评审、聊天和角色记忆 |
+| `services/chatEngine/runtimeGuards.ts` | 运行时身份兜底和重复防护辅助 |
 | `services/chatEngine/collisionDetector.ts` | 检测观点矛盾，触发角色碰撞 |
 | `services/chatEngine/topicPool.ts` | 从文档/评审结果中提取讨论话题 |
 
@@ -186,7 +188,7 @@
 |------|------|
 | `types/index.ts` | 新增 `typingAgents: string[]` 到 ChatRoom 或组件 state |
 | `pages/chat/ChatRoomPage.tsx` | 消息列表底部新增 TypingIndicator 组件 |
-| `services/chatEngine/scheduler.ts` | Agent 开始生成前设置 typing 状态，完成后清除 |
+| `pages/chat/ChatRoomPage.tsx` | Agent 开始生成前设置 typing 状态，完成后清除 |
 
 **视觉效果**:
 - 显示 Agent 头像 + 名字 + "正在输入..." + 三个跳动的点动画
@@ -608,8 +610,10 @@ feature/teaching-research 分支
 frontend/src/services/chatEngine/
 ├── index.ts                    # 引擎主入口
 ├── events.ts                   # 事件类型定义
-├── scheduler.ts                # 调度器（模式感知）
-├── reactor.ts                  # 反应器（Agent 选择 + Prompt + LLM）
+├── eventRouterV2.ts            # 事件识别与优先级
+├── turnPlanner.ts              # 回合规划与身份姿态转译
+├── contextAssembler.ts         # 分层上下文组装
+├── runtimeGuards.ts            # 身份安全兜底与重复防护辅助
 ├── collisionDetector.ts        # 观点碰撞检测
 ├── topicPool.ts                # 话题池管理
 └── eventTriggers.ts            # 角色事件触发器

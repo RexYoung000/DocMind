@@ -23,7 +23,8 @@ import { DocumentPicker } from '@/components/chat/DocumentPicker'
 import { EmojiReactionBar } from '@/components/chat/EmojiReactionBar'
 import { ChatRoomStatusBar } from '@/components/chat/ChatRoomStatusBar'
 import { ChatSearchPanel } from '@/components/chat/ChatSearchPanel'
-import { BookmarkPanel, exportBookmarksAsMarkdown } from '@/components/chat/BookmarkPanel'
+import { BookmarkPanel } from '@/components/chat/BookmarkPanel'
+import { exportBookmarksAsMarkdown } from '@/components/chat/bookmarkExport'
 import { DiscussionSummaryCard } from '@/components/chat/DiscussionSummaryCard'
 import { cn } from '@/lib/utils'
 import { AGENT_COLORS, useAgentStore } from '@/stores/agentStore'
@@ -32,14 +33,53 @@ import { useDocumentStore } from '@/stores/documentStore'
 import { useReviewStore } from '@/stores/reviewStore'
 import { useAuthStore } from '@/stores/authStore'
 import { chatCompletion } from '@/services/llmService'
-import { detectCollisions, evaluateTriggers, getEventPromptSuffix, TopicPool } from '@/services/chatEngine'
+import {
+  assembleLayeredContext,
+  buildAgentMemoryMap,
+  buildCapabilityInstruction,
+  buildFeedbackDisplay,
+  buildDiscussionArtifact,
+  buildRepetitionRecoveryInstruction,
+  buildTurnMessageMetadata,
+  createIdentitySafeFallbackReply,
+  createStrategyLogEntry,
+  detectCollisions,
+  evaluateTriggers,
+  formatAgentMemoryForContext,
+  getFeedbackSteps,
+  getEventPromptSuffix,
+  getMessageMetadataBadges,
+  guardAgainstRepetition,
+  inferCapabilityProfile,
+  normalizeChatRoomStrategy,
+  planFailureRecovery,
+  planDiscussionTurns,
+  resolveChatControlAction,
+  routeChatEvents,
+  validateAndAdaptResponse,
+  TopicPool,
+} from '@/services/chatEngine'
+import type {
+  AgentFailureState,
+  CapabilityProfile,
+  ChatControlActionId,
+  FeedbackStep,
+  MetadataBadgeTone,
+  RoutedChatEvent,
+  SpeakingPosture,
+  StrategyLogEntry,
+  StrategyLogInput,
+  TurnIntent,
+} from '@/services/chatEngine'
 import { isModelConfigValid, useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createId } from '@/utils/id'
-import type { ChatMessage, ChatMessageAttachment, Agent, DiscussionMode, Document, Review, ChatAgendaItem, DiscussionState } from '@/types'
+import type { ChatMessage, ChatMessageAttachment, Agent, DiscussionMode, Document, Review, ChatAgendaItem, DiscussionState, ChatRoomStrategy } from '@/types'
 
 const EMPTY_MESSAGES: ChatMessage[] = []
+const EMPTY_PARTICIPANTS: Agent[] = []
+const EMPTY_AGENDA: ChatAgendaItem[] = []
 const MAX_RECENT_MESSAGES = 12
 
 type DiscussionTurnIntent = 'open' | 'challenge' | 'support' | 'question' | 'evidence' | 'synthesize'
@@ -49,13 +89,77 @@ type DiscussionTurn = {
   intent: DiscussionTurnIntent
   targetAgent?: Agent
   focus: string
+  event?: RoutedChatEvent
+  speakingPosture?: SpeakingPosture
+  capabilityProfile?: CapabilityProfile
+  wasPostureTranslated?: boolean
+  reason?: string
+}
+
+type AgentMessageMetadata = Pick<ChatMessage, 'intent' | 'respondingTo' | 'contextSource' | 'evidenceLevel' | 'citations'>
+
+type LlmChatMessage = {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+type AgentReplyResult = {
+  text: string
+  failed: boolean
+  error?: string
+  usedContext?: string[]
+  contextSummary?: string
+  finalPosture?: SpeakingPosture
+  wasPostureTranslated?: boolean
+  outputWasRewritten?: boolean
 }
 
 function randomDelay(min: number, max: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, min + Math.random() * (max - min)))
 }
 
-function buildChatSystemPrompt(agent: Agent, docContext: string, otherAgents: Agent[], mode: DiscussionMode) {
+function requestChatCompletion(messages: LlmChatMessage[], signal?: AbortSignal): Promise<AgentReplyResult> {
+  return new Promise<AgentReplyResult>((resolve) => {
+    let fullText = ''
+    let settled = false
+    const finish = (result: AgentReplyResult) => {
+      if (settled) return
+      settled = true
+      resolve({ ...result, text: result.text.trim() })
+    }
+
+    chatCompletion(
+      messages,
+      {
+        onChunk: (chunk) => {
+          fullText += chunk
+        },
+        onDone: (text) => finish({ text: text || fullText, failed: false }),
+        onError: (error) => finish({
+          text: fullText,
+          failed: fullText.trim().length === 0,
+          error: error.message,
+        }),
+      },
+      signal,
+    ).catch((error: unknown) => {
+      finish({
+        text: fullText,
+        failed: fullText.trim().length === 0,
+        error: error instanceof Error ? error.message : 'LLM request failed',
+      })
+    })
+  })
+}
+
+function buildChatSystemPrompt(
+  agent: Agent,
+  docContext: string,
+  otherAgents: Agent[],
+  mode: DiscussionMode,
+  strategy: ChatRoomStrategy | undefined,
+  capabilityInstruction: string,
+) {
   const teammates = otherAgents.length > 0
     ? `\n群里还有：${otherAgents.map((item) => `${item.name}（${item.tagline}）`).join('、')}。你可以直接回应他们的观点或点名互动。`
     : ''
@@ -77,9 +181,18 @@ function buildChatSystemPrompt(agent: Agent, docContext: string, otherAgents: Ag
 - 像群聊一样自然发言，优先回应别人刚说过的话。
 - 不要重复别人的句式和结论。`
 
+  const toneGuide = getRoomToneGuide(strategy?.roomTone)
+  const citationGuide = getCitationGuide(strategy?.citationPolicy)
+  const boundaryGuide = capabilityInstruction
+    ? `\n身份与能力边界：\n${capabilityInstruction}`
+    : ''
+
   return `${agent.system_prompt}
 ${teammates}
 ${modeGuide}
+${toneGuide}
+${citationGuide}
+${boundaryGuide}
 ${docContext}
 
 记住：
@@ -87,6 +200,32 @@ ${docContext}
 2. 回答控制在 2-4 句，优先回应别人已经说过的话。
 3. 不要泛泛而谈，要尽量落到具体论据、内容细节或评价标准上。
 4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问”有没有文档”。`
+}
+
+function getRoomToneGuide(tone?: ChatRoomStrategy['roomTone']) {
+  switch (tone) {
+    case 'brainstorm':
+      return '\n聊天室气质：头脑风暴。允许提出新角度，但每次只贡献一个清晰想法。'
+    case 'teaching-seminar':
+      return '\n聊天室气质：教学研讨。优先围绕课堂实施、学生理解和可观察证据发言。'
+    case 'product-review':
+      return '\n聊天室气质：产品评审。优先围绕用户价值、流程阻力、风险和优先级发言。'
+    case 'review-meeting':
+    default:
+      return '\n聊天室气质：专业评审会。观点要短、准、可追问，避免空泛表态。'
+  }
+}
+
+function getCitationGuide(policy?: ChatRoomStrategy['citationPolicy']) {
+  switch (policy) {
+    case 'required':
+      return '\n引用策略：涉及文档、评审或数据判断时必须给出具体依据；没有依据就明确说需要补证据。'
+    case 'none':
+      return '\n引用策略：不强制展示引用，但仍要让理由具体可检查。'
+    case 'optional':
+    default:
+      return '\n引用策略：可引用但不强制。用户追问依据时，优先回到原文、评审结论或具体例子。'
+  }
 }
 
 function uniqueDocuments(documents: Array<Document | null | undefined>) {
@@ -173,6 +312,43 @@ function buildRecentContextMessages(messages: ChatMessage[], documentMap: Map<st
         ? `[${message.sender_name}]: ${buildMessageContent(message, documentMap)}`
         : buildMessageContent(message, documentMap),
   }))
+}
+
+function mergeUniqueMessages(...groups: ChatMessage[][]): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>()
+  for (const group of groups) {
+    for (const message of group) {
+      byId.set(message.id, message)
+    }
+  }
+  return Array.from(byId.values())
+}
+
+function buildContextSummary(usedContext: string[]) {
+  return usedContext.length > 0
+    ? `Used layered context: ${usedContext.join(', ')}`
+    : 'No layered context sections were available.'
+}
+
+function citationRefs(metadata: AgentMessageMetadata): string[] {
+  return (metadata.citations ?? []).map((citation) =>
+    [citation.source, citation.documentId, citation.section, citation.title, citation.text]
+      .filter(Boolean)
+      .join(':')
+  )
+}
+
+function persistStrategyLogEntry(entry: StrategyLogEntry) {
+  if (typeof window === 'undefined') return
+
+  try {
+    const key = `chat-strategy-log:${entry.roomId}`
+    const previous = JSON.parse(window.localStorage.getItem(key) || '[]') as StrategyLogEntry[]
+    window.localStorage.setItem(key, JSON.stringify([...previous, entry].slice(-120)))
+    window.dispatchEvent(new CustomEvent('chat-strategy-log', { detail: entry }))
+  } catch {
+    // Strategy logs are diagnostic only; storage failures should never block chat.
+  }
 }
 
 function createVirtualUserMessage(content: string): ChatMessage {
@@ -321,8 +497,45 @@ function buildDiscussionTurns(
   recentMessages: ChatMessage[],
   mode: DiscussionMode,
   topic: ChatAgendaItem | null | undefined,
+  strategy?: ChatRoomStrategy,
   targetAgent?: Agent,
+  capabilityProfiles?: Record<string, CapabilityProfile>,
 ) {
+  const routedEvents = routeChatEvents({
+    messages: recentMessages,
+    participants,
+    currentTopic: topic || null,
+  })
+
+  const plannedTurns = planDiscussionTurns({
+    participants,
+    messages: recentMessages,
+    events: routedEvents,
+    currentTopic: topic || null,
+    capabilityProfiles,
+    strategy: {
+      discussionMode: mode,
+      conflictLevel: strategy?.conflictLevel || (mode === 'debate' ? 'intense' : 'balanced'),
+      initiativeLevel: strategy?.initiativeLevel || (mode === 'free' ? 'standard' : 'high'),
+    },
+  })
+
+  if (plannedTurns.length > 0) {
+    return plannedTurns.map((turn) => ({
+      agent: turn.agent,
+      intent: mapPlannedIntent(turn.intent, turn.wasPostureTranslated),
+      targetAgent: turn.event.targetAgentId
+        ? participants.find((agent) => agent.id === turn.event.targetAgentId)
+        : targetAgent,
+      focus: turn.focus,
+      event: turn.event,
+      speakingPosture: turn.speakingPosture,
+      capabilityProfile: turn.capabilityProfile,
+      wasPostureTranslated: turn.wasPostureTranslated,
+      reason: turn.reason,
+    })) satisfies DiscussionTurn[]
+  }
+
   const latestUserMessage = getLatestUserMessage(recentMessages)
   const userIntent = inferUserIntent(latestUserMessage)
   const topicText = buildRoundFocus(recentMessages, topic)
@@ -401,6 +614,26 @@ function buildDiscussionTurns(
   return turns.slice(0, mode === 'free' ? 2 : 3)
 }
 
+function mapPlannedIntent(intent: TurnIntent, translated: boolean): DiscussionTurnIntent {
+  if (translated && intent === 'support') return 'support'
+
+  switch (intent) {
+    case 'challenge':
+      return 'challenge'
+    case 'evidence':
+      return 'evidence'
+    case 'question':
+      return 'question'
+    case 'synthesize':
+      return 'synthesize'
+    case 'support':
+      return 'support'
+    case 'open':
+    case 'progress':
+      return 'open'
+  }
+}
+
 function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: DiscussionMode) {
   const target = turn.targetAgent ? `请直接回应 ${turn.targetAgent.name} 刚才的观点。` : ''
   const sharedRules = [
@@ -435,6 +668,38 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
   return [...sharedRules, intentRule].filter(Boolean).join('\n')
 }
 
+function getMetadataBadgeClass(tone: MetadataBadgeTone) {
+  switch (tone) {
+    case 'document':
+      return 'border-blue-100 bg-blue-50 text-blue-700'
+    case 'review':
+      return 'border-violet-100 bg-violet-50 text-violet-700'
+    case 'experience':
+      return 'border-emerald-100 bg-emerald-50 text-emerald-700'
+    case 'warning':
+      return 'border-amber-100 bg-amber-50 text-amber-700'
+    case 'neutral':
+    default:
+      return 'border-gray-200 bg-gray-50 text-gray-600'
+  }
+}
+
+function getFeedbackToneClass(tone: 'neutral' | 'document' | 'evidence' | 'conflict' | 'summary') {
+  switch (tone) {
+    case 'document':
+      return 'border-blue-100 bg-blue-50 text-blue-700'
+    case 'evidence':
+      return 'border-cyan-100 bg-cyan-50 text-cyan-700'
+    case 'conflict':
+      return 'border-amber-100 bg-amber-50 text-amber-700'
+    case 'summary':
+      return 'border-violet-100 bg-violet-50 text-violet-700'
+    case 'neutral':
+    default:
+      return 'border-gray-200 bg-white text-gray-600'
+  }
+}
+
 export default function ChatRoomPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -467,6 +732,7 @@ export default function ChatRoomPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [typingAgentIds, setTypingAgentIds] = useState<string[]>([])
+  const [activeFeedbackSteps, setActiveFeedbackSteps] = useState<FeedbackStep[]>([])
   const [showDoc, setShowDoc] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
   const [showDocPicker, setShowDocPicker] = useState(false)
@@ -484,15 +750,26 @@ export default function ChatRoomPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const kickoffSeedRef = useRef<string | null>(null)
+  const failureStateRef = useRef<Record<string, AgentFailureState>>({})
+  const strategyLogRef = useRef<StrategyLogEntry[]>([])
 
-  const participants = room?.participants || []
-  const discussionMode: DiscussionMode = room?.discussionMode || (review ? 'moderated' : 'free')
+  const participants = room?.participants ?? EMPTY_PARTICIPANTS
+  const roomStrategy = useMemo(
+    () => (room ? normalizeChatRoomStrategy(room.strategy, room.discussionMode) : undefined),
+    [room]
+  )
+  const discussionMode: DiscussionMode = roomStrategy?.discussionMode || (review ? 'moderated' : 'free')
   const discussionState: DiscussionState = room?.discussionState || (room?.status === 'closed' ? 'closed' : 'idle')
-  const agenda = room?.pendingTopics || []
+  const agenda = room?.pendingTopics ?? EMPTY_AGENDA
   const currentTopic = agenda.find((topic) => topic.id === room?.currentTopicId) || agenda.find((topic) => topic.status === 'active') || null
   const remainingTopics = agenda.filter((topic) => topic.status === 'pending').length
+  const feedbackDisplay = useMemo(() => buildFeedbackDisplay(activeFeedbackSteps), [activeFeedbackSteps])
   const documentMap = useMemo(() => new Map(allDocuments.map((document) => [document.id, document])), [allDocuments])
   const doc = useMemo(() => room?.document_id ? documentMap.get(room.document_id) || null : null, [documentMap, room])
+  const capabilityProfiles = useMemo(
+    () => Object.fromEntries(participants.map((agent) => [agent.id, inferCapabilityProfile(agent)])) as Record<string, CapabilityProfile>,
+    [participants]
+  )
   const attachedDocuments = useMemo(() => {
     const recentAttachments = messages
       .slice(-8)
@@ -500,10 +777,15 @@ export default function ChatRoomPage() {
     return uniqueDocuments(recentAttachments)
   }, [documentMap, messages])
 
-  const docContext = useMemo(() => {
-    const supplementalDocuments = attachedDocuments.filter((document) => document.id !== doc?.id)
-    return buildRoomContext(doc, supplementalDocuments, review, room?.topicTags)
-  }, [attachedDocuments, doc, review, room?.topicTags])
+  const recordStrategyLog = useCallback(
+    (input: Omit<StrategyLogInput, 'roomId'>) => {
+      if (!id) return
+      const entry = createStrategyLogEntry({ roomId: id, ...input })
+      strategyLogRef.current = [...strategyLogRef.current, entry].slice(-120)
+      persistStrategyLogEntry(entry)
+    },
+    [id]
+  )
 
   useEffect(() => {
     if (!id || !room) return
@@ -512,6 +794,399 @@ export default function ChatRoomPage() {
     const agendaItems = buildAgendaFromContext(room.topic, doc, review, room.topicTags)
     setAgenda(id, agendaItems, agendaItems[0]?.id)
   }, [doc, id, review, room, setAgenda])
+
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    })
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, scrollToBottom])
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
+
+  const getEventInstruction = useCallback((agent: Agent, recentMessages: ChatMessage[]) => {
+    const event = evaluateTriggers(recentMessages, agent)
+      .sort((left, right) => right.probability - left.probability)[0]
+    return event ? getEventPromptSuffix(event) : ''
+  }, [])
+
+  const getAgentReply = useCallback(
+    async (
+      agent: Agent,
+      recentMessages: ChatMessage[],
+      signal?: AbortSignal,
+      extraInstruction?: string,
+      requestedPosture?: SpeakingPosture,
+    ): Promise<AgentReplyResult> => {
+      const otherAgents = participants.filter((item) => item.id !== agent.id)
+      const profile = capabilityProfiles[agent.id] ?? inferCapabilityProfile(agent)
+      const supplementalDocuments = attachedDocuments.filter((document) => document.id !== doc?.id)
+      const contextDocuments = uniqueDocuments([doc, ...supplementalDocuments])
+      const memoryMap = buildAgentMemoryMap(mergeUniqueMessages(messages, recentMessages))
+      const assembledContext = assembleLayeredContext({
+        contextDepth: roomStrategy?.contextDepth || 'deep',
+        roomTopic: room?.topic,
+        roomTone: roomStrategy?.roomTone,
+        currentTopic: currentTopic?.text,
+        documents: contextDocuments,
+        reviewSummary: review?.summary,
+        recentMessages,
+        agentMemory: formatAgentMemoryForContext(memoryMap[agent.id]),
+      })
+      const usedContext = assembledContext.sections.map((section) => `${section.type}:${section.title}`)
+      const legacyContext = buildRoomContext(doc, supplementalDocuments, review, room?.topicTags)
+      const contextPrompt = assembledContext.promptText || legacyContext
+      const capabilityInstruction = roomStrategy?.identityBoundary === 'off'
+        ? ''
+        : buildCapabilityInstruction(profile)
+      const systemPrompt = buildChatSystemPrompt(agent, contextPrompt, otherAgents, discussionMode, roomStrategy, capabilityInstruction)
+      const historyMessages = buildRecentContextMessages(recentMessages, documentMap)
+      const finalMessages = extraInstruction
+        ? [...historyMessages, { role: 'user' as const, content: extraInstruction }]
+        : historyMessages
+
+      const initial = await requestChatCompletion([{ role: 'system', content: systemPrompt }, ...finalMessages], signal)
+      let text = initial.text
+      let outputWasRewritten = false
+      let finalPosture = requestedPosture
+      let wasPostureTranslated = false
+
+      if (text && roomStrategy?.identityBoundary !== 'off') {
+        const validation = validateAndAdaptResponse({
+          content: text,
+          profile,
+          requestedPosture,
+          topic: currentTopic?.text || room?.topic,
+          agentName: agent.name,
+        })
+        finalPosture = validation.recommendedPosture
+        wasPostureTranslated = validation.recommendedPosture !== requestedPosture
+
+        if (validation.needsRewrite && validation.rewriteInstruction) {
+          const rewrite = await requestChatCompletion(
+            [
+              {
+                role: 'system',
+                content: [
+                  validation.rewriteInstruction,
+                  '只输出重写后的聊天室发言，不要解释规则，不要保留越权判断。',
+                ].join('\n'),
+              },
+              { role: 'user', content: `原回复：\n${text}` },
+            ],
+            signal,
+          )
+          const rewriteValidation = rewrite.text
+            ? validateAndAdaptResponse({
+                content: rewrite.text,
+                profile,
+                requestedPosture: validation.recommendedPosture,
+                topic: currentTopic?.text || room?.topic,
+                agentName: agent.name,
+              })
+            : validation
+
+          if (rewrite.text && !rewriteValidation.needsRewrite) {
+            text = rewrite.text
+            finalPosture = rewriteValidation.recommendedPosture
+            outputWasRewritten = true
+          } else {
+            text = createIdentitySafeFallbackReply({
+              agent,
+              profile,
+              focus: currentTopic?.text || room?.topic,
+              requestedPosture,
+              violations: rewriteValidation.violations,
+            })
+            outputWasRewritten = true
+            finalPosture = validation.recommendedPosture
+          }
+        }
+      }
+
+      return {
+        ...initial,
+        text,
+        usedContext,
+        contextSummary: buildContextSummary(usedContext),
+        finalPosture,
+        wasPostureTranslated,
+        outputWasRewritten,
+      }
+    },
+    [
+      attachedDocuments,
+      capabilityProfiles,
+      currentTopic?.text,
+      discussionMode,
+      doc,
+      documentMap,
+      messages,
+      participants,
+      review,
+      room?.topic,
+      room?.topicTags,
+      roomStrategy,
+    ]
+  )
+
+  const addAgentMsg = useCallback(
+    (
+      agent: Agent,
+      content: string,
+      metadata?: Pick<ChatMessage, 'intent' | 'respondingTo' | 'contextSource' | 'evidenceLevel' | 'citations'>,
+    ) => {
+      if (!id) return
+
+      addMessage(id, {
+        id: createId(),
+        room_id: id,
+        sender_type: 'agent',
+        sender_id: agent.id,
+        sender_name: agent.name,
+        sender_color: agent.color,
+        content,
+        ...metadata,
+        created_at: new Date().toISOString(),
+      })
+
+      if (user?.name && content.includes(`@${user.name}`)) {
+        toast('info', `${agent.name} 提到了你`)
+      }
+    },
+    [addMessage, id, user]
+  )
+
+  const runDiscussionRound = useCallback(async (recentMessages: ChatMessage[], targetAgent?: Agent, topic?: ChatAgendaItem | null) => {
+      if (!participants.length) return
+
+      if (id) {
+        updateDiscussionState(id, 'discussing')
+        if (topic?.id) {
+          activateAgendaTopic(id, topic.id)
+        }
+      }
+
+      const turns = buildDiscussionTurns(participants, recentMessages, discussionMode, topic, roomStrategy, targetAgent, capabilityProfiles)
+      const conversation = [...recentMessages]
+      let responsesAdded = 0
+      let skippedForRepetition = 0
+
+      for (let index = 0; index < turns.length; index += 1) {
+        const turn = turns[index]
+        let agent = turn.agent
+        if (abortRef.current?.signal.aborted) break
+
+        const instructionParts = [
+          buildTurnInstruction(turn, index, discussionMode),
+          getEventInstruction(agent, conversation),
+        ].filter(Boolean)
+
+        const feedbackSteps = turn.event
+          ? getFeedbackSteps(turn.event, roomStrategy?.feedbackLevel || 'simple')
+          : ['agent_typing' as FeedbackStep]
+        const respondingTo = turn.targetAgent && turn.targetAgent.id !== agent.id
+          ? { agentId: turn.targetAgent.id, label: turn.targetAgent.name }
+          : undefined
+
+        setActiveFeedbackSteps(feedbackSteps)
+        setTypingAgentIds([agent.id])
+        if (index > 0) {
+          await randomDelay(650, 1400)
+        }
+
+        let replyResult = await getAgentReply(
+          agent,
+          conversation,
+          abortRef.current?.signal,
+          instructionParts.length > 0 ? instructionParts.join('\n') : undefined,
+          turn.speakingPosture,
+        )
+
+        if (replyResult.failed || !replyResult.text) {
+          const currentFailure = failureStateRef.current[agent.id] ?? { agentId: agent.id, failedAttempts: 0 }
+          const failureState: AgentFailureState = {
+            agentId: agent.id,
+            failedAttempts: currentFailure.failedAttempts + 1,
+            lastError: replyResult.error,
+          }
+          failureStateRef.current = { ...failureStateRef.current, [agent.id]: failureState }
+          const recoveryPlan = planFailureRecovery({
+            failedAgent: agent,
+            participants,
+            failureState,
+            capabilityProfiles,
+          })
+
+          recordStrategyLog({
+            agentId: agent.id,
+            selectedAgentName: agent.name,
+            event: turn.event,
+            strategy: roomStrategy,
+            contextSummary: recoveryPlan.reason,
+            usedContext: replyResult.usedContext,
+            requestedPosture: turn.speakingPosture,
+            finalPosture: replyResult.finalPosture,
+            wasPostureTranslated: Boolean(turn.wasPostureTranslated || replyResult.wasPostureTranslated),
+            outputWasRewritten: Boolean(replyResult.outputWasRewritten),
+          })
+
+          if (recoveryPlan.retryAgent && recoveryPlan.action !== 'summarize_stage') {
+            agent = recoveryPlan.retryAgent
+            setTypingAgentIds([agent.id])
+            replyResult = await getAgentReply(
+              agent,
+              conversation,
+              abortRef.current?.signal,
+              [
+                instructionParts.join('\n'),
+                recoveryPlan.action === 'switch_agent'
+                  ? `上一位角色生成失败，请你接上当前讨论，不要提到技术错误。${recoveryPlan.reason}`
+                  : `刚才生成失败，请直接给出一条更短、更具体的回复。${recoveryPlan.reason}`,
+              ].filter(Boolean).join('\n'),
+              turn.speakingPosture,
+            )
+          }
+        } else {
+          failureStateRef.current = {
+            ...failureStateRef.current,
+            [agent.id]: { agentId: agent.id, failedAttempts: 0 },
+          }
+        }
+
+        setTypingAgentIds([])
+        setActiveFeedbackSteps([])
+        if (!replyResult.text || abortRef.current?.signal.aborted) continue
+
+        const messageMetadata = buildTurnMessageMetadata({
+          intent: turn.intent,
+          event: turn.event,
+          speakingPosture: replyResult.finalPosture || turn.speakingPosture,
+          respondingTo,
+        })
+        const repetition = guardAgainstRepetition({
+          agentId: agent.id,
+          candidateContent: replyResult.text,
+          recentMessages: conversation,
+          evidenceRefs: citationRefs(messageMetadata),
+        })
+        if (!repetition.shouldSpeak) {
+          skippedForRepetition += 1
+          recordStrategyLog({
+            agentId: agent.id,
+            selectedAgentName: agent.name,
+            event: turn.event,
+            strategy: roomStrategy,
+            contextSummary: `${repetition.reason} Matched message: ${repetition.matchedMessageId || 'unknown'}.`,
+            usedContext: replyResult.usedContext,
+            requestedPosture: turn.speakingPosture,
+            finalPosture: replyResult.finalPosture,
+            wasPostureTranslated: Boolean(turn.wasPostureTranslated || replyResult.wasPostureTranslated),
+            outputWasRewritten: Boolean(replyResult.outputWasRewritten),
+          })
+          continue
+        }
+
+        addAgentMsg(agent, replyResult.text, messageMetadata)
+        responsesAdded += 1
+        recordStrategyLog({
+          agentId: agent.id,
+          selectedAgentName: agent.name,
+          event: turn.event,
+          strategy: roomStrategy,
+          contextSummary: replyResult.contextSummary,
+          usedContext: replyResult.usedContext,
+          requestedPosture: turn.speakingPosture,
+          finalPosture: replyResult.finalPosture,
+          wasPostureTranslated: Boolean(turn.wasPostureTranslated || replyResult.wasPostureTranslated),
+          outputWasRewritten: Boolean(replyResult.outputWasRewritten),
+        })
+        conversation.push({
+          id: `virtual-agent-${agent.id}-${createId()}`,
+          room_id: id || 'virtual',
+          sender_type: 'agent',
+          sender_id: agent.id,
+          sender_name: agent.name,
+          sender_color: agent.color,
+          content: replyResult.text,
+          ...messageMetadata,
+          created_at: new Date().toISOString(),
+        })
+      }
+
+      if (responsesAdded === 0 && !abortRef.current?.signal.aborted) {
+        const fallbackAgent = targetAgent || turns[0]?.agent || participants[0]
+        if (!fallbackAgent) return
+
+        setActiveFeedbackSteps(['agent_typing'])
+        setTypingAgentIds([fallbackAgent.id])
+        const fallbackReply = await getAgentReply(
+          fallbackAgent,
+          conversation,
+          abortRef.current?.signal,
+          [
+            '请直接回应用户或当前最后一条消息。',
+            skippedForRepetition > 0 ? buildRepetitionRecoveryInstruction('skip') : '',
+            buildTurnInstruction({ agent: fallbackAgent, intent: inferUserIntent(getLatestUserMessage(conversation)) || 'open', focus: buildRoundFocus(conversation, topic) }, 0, discussionMode),
+          ].filter(Boolean).join('\n'),
+        )
+        setTypingAgentIds([])
+        setActiveFeedbackSteps([])
+
+        if (!fallbackReply.text || abortRef.current?.signal.aborted) return
+
+        const fallbackMetadata = buildTurnMessageMetadata({
+          intent: inferUserIntent(getLatestUserMessage(conversation)) || 'open',
+          speakingPosture: fallbackReply.finalPosture,
+        })
+        const fallbackRepetition = guardAgainstRepetition({
+          agentId: fallbackAgent.id,
+          candidateContent: fallbackReply.text,
+          recentMessages: conversation,
+          evidenceRefs: citationRefs(fallbackMetadata),
+        })
+        if (!fallbackRepetition.shouldSpeak) return
+
+        addAgentMsg(fallbackAgent, fallbackReply.text, fallbackMetadata)
+        recordStrategyLog({
+          agentId: fallbackAgent.id,
+          selectedAgentName: fallbackAgent.name,
+          strategy: roomStrategy,
+          contextSummary: fallbackReply.contextSummary,
+          usedContext: fallbackReply.usedContext,
+          finalPosture: fallbackReply.finalPosture,
+          wasPostureTranslated: Boolean(fallbackReply.wasPostureTranslated),
+          outputWasRewritten: Boolean(fallbackReply.outputWasRewritten),
+        })
+      }
+
+      if (id && topic?.id) {
+        const nextTopic = agenda.find((item) => item.status === 'pending' && item.id !== topic.id)
+        completeAgendaTopic(id, topic.id, nextTopic?.id)
+        updateDiscussionState(id, nextTopic ? 'discussing' : 'summarizing')
+      }
+  }, [
+    activateAgendaTopic,
+    addAgentMsg,
+    agenda,
+    capabilityProfiles,
+    completeAgendaTopic,
+    discussionMode,
+    getAgentReply,
+    getEventInstruction,
+    id,
+    participants,
+    recordStrategyLog,
+    roomStrategy,
+    updateDiscussionState,
+  ])
 
   useEffect(() => {
     if (!id || !room || !hasValidConfig) return
@@ -544,157 +1219,7 @@ export default function ChatRoomPage() {
     return () => window.clearTimeout(timer)
   }, [agenda, currentTopic, doc, hasValidConfig, id, loading, messages, participants.length, room, runDiscussionRound])
 
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-    })
-  }, [])
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages, scrollToBottom])
-
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [])
-
-  const getEventInstruction = useCallback((agent: Agent, recentMessages: ChatMessage[]) => {
-    const event = evaluateTriggers(recentMessages, agent)
-      .sort((left, right) => right.probability - left.probability)[0]
-    return event ? getEventPromptSuffix(event) : ''
-  }, [])
-
-  const getAgentReply = useCallback(
-    async (agent: Agent, recentMessages: ChatMessage[], signal?: AbortSignal, extraInstruction?: string) => {
-      const otherAgents = participants.filter((item) => item.id !== agent.id)
-      const systemPrompt = buildChatSystemPrompt(agent, docContext, otherAgents, discussionMode)
-      const historyMessages = buildRecentContextMessages(recentMessages, documentMap)
-      const finalMessages = extraInstruction
-        ? [...historyMessages, { role: 'user' as const, content: extraInstruction }]
-        : historyMessages
-
-      return new Promise<string>((resolve) => {
-        let fullText = ''
-
-        chatCompletion(
-          [{ role: 'system', content: systemPrompt }, ...finalMessages],
-          {
-            onChunk: (chunk) => {
-              fullText += chunk
-            },
-            onDone: (text) => resolve(text || fullText),
-            onError: () => resolve(fullText || '...'),
-          },
-          signal,
-        ).catch(() => resolve(fullText || '...'))
-      })
-    },
-    [discussionMode, docContext, documentMap, participants]
-  )
-
-  const addAgentMsg = useCallback(
-    (agent: Agent, content: string) => {
-      if (!id) return
-
-      addMessage(id, {
-        id: createId(),
-        room_id: id,
-        sender_type: 'agent',
-        sender_id: agent.id,
-        sender_name: agent.name,
-        sender_color: agent.color,
-        content,
-        created_at: new Date().toISOString(),
-      })
-
-      if (user?.name && content.includes(`@${user.name}`)) {
-        toast('info', `${agent.name} 提到了你`)
-      }
-    },
-    [addMessage, id, user]
-  )
-
-  async function runDiscussionRound(recentMessages: ChatMessage[], targetAgent?: Agent, topic?: ChatAgendaItem | null) {
-      if (!participants.length) return
-
-      if (id) {
-        updateDiscussionState(id, 'discussing')
-        if (topic?.id) {
-          activateAgendaTopic(id, topic.id)
-        }
-      }
-
-      const turns = buildDiscussionTurns(participants, recentMessages, discussionMode, topic, targetAgent)
-      const conversation = [...recentMessages]
-      let responsesAdded = 0
-
-      for (let index = 0; index < turns.length; index += 1) {
-        const turn = turns[index]
-        const agent = turn.agent
-        if (abortRef.current?.signal.aborted) break
-
-        const instructionParts = [
-          buildTurnInstruction(turn, index, discussionMode),
-          getEventInstruction(agent, conversation),
-        ].filter(Boolean)
-
-        setTypingAgentIds([agent.id])
-        if (index > 0) {
-          await randomDelay(650, 1400)
-        }
-
-        const reply = await getAgentReply(
-          agent,
-          conversation,
-          abortRef.current?.signal,
-          instructionParts.length > 0 ? instructionParts.join('\n') : undefined,
-        )
-
-        setTypingAgentIds([])
-        if (!reply || abortRef.current?.signal.aborted) continue
-
-        addAgentMsg(agent, reply)
-        responsesAdded += 1
-        conversation.push({
-          id: `virtual-agent-${agent.id}-${createId()}`,
-          room_id: id || 'virtual',
-          sender_type: 'agent',
-          sender_id: agent.id,
-          sender_name: agent.name,
-          sender_color: agent.color,
-          content: reply,
-          created_at: new Date().toISOString(),
-        })
-      }
-
-      if (responsesAdded === 0 && !abortRef.current?.signal.aborted) {
-        const fallbackAgent = targetAgent || turns[0]?.agent || participants[0]
-        if (!fallbackAgent) return
-
-        setTypingAgentIds([fallbackAgent.id])
-        const fallbackReply = await getAgentReply(
-          fallbackAgent,
-          conversation,
-          abortRef.current?.signal,
-          `请直接回应用户或当前最后一条消息。${buildTurnInstruction({ agent: fallbackAgent, intent: inferUserIntent(getLatestUserMessage(conversation)) || 'open', focus: buildRoundFocus(conversation, topic) }, 0, discussionMode)}`,
-        )
-        setTypingAgentIds([])
-
-        if (!fallbackReply || abortRef.current?.signal.aborted) return
-
-        addAgentMsg(fallbackAgent, fallbackReply)
-      }
-
-      if (id && topic?.id) {
-        const nextTopic = agenda.find((item) => item.status === 'pending' && item.id !== topic.id)
-        completeAgendaTopic(id, topic.id, nextTopic?.id)
-        updateDiscussionState(id, nextTopic ? 'discussing' : 'summarizing')
-      }
-  }
-
-  const parseTargetAgent = (text: string) => {
+  const parseTargetAgent = useCallback((text: string) => {
     const match = text.match(/^@(\S+)\s+/)
     if (!match) {
       return { targetAgent: undefined, cleanText: text }
@@ -702,7 +1227,7 @@ export default function ChatRoomPage() {
 
     const targetAgent = participants.find((item) => item.name === match[1])
     return { targetAgent, cleanText: text.slice(match[0].length) }
-  }
+  }, [participants])
 
   const handleReaction = useCallback(
     (messageId: string, emoji: string) => {
@@ -765,14 +1290,73 @@ export default function ChatRoomPage() {
           actionItems: parsed.actionItems || [],
           generatedAt: new Date().toISOString(),
         })
+      } else {
+        const artifact = buildDiscussionArtifact(messages)
+        addSummary({
+          id: createId(),
+          roomId: id,
+          keyPoints: artifact.consensus,
+          agreements: artifact.adoptedIdeas,
+          disagreements: artifact.disagreements,
+          actionItems: artifact.actionItems,
+          generatedAt: artifact.generatedAt,
+        })
       }
     } catch {
-      toast('error', '总结生成失败')
+      const artifact = buildDiscussionArtifact(messages)
+      addSummary({
+        id: createId(),
+        roomId: id,
+        keyPoints: artifact.consensus,
+        agreements: artifact.adoptedIdeas,
+        disagreements: artifact.disagreements,
+        actionItems: artifact.actionItems,
+        generatedAt: artifact.generatedAt,
+      })
+      toast('info', '已用本地讨论纪要兜底')
     }
 
     setSummaryLoading(false)
     updateDiscussionState(id, room?.status === 'closed' ? 'closed' : 'idle')
   }, [addSummary, hasValidConfig, id, messages, room?.status, updateDiscussionState])
+
+  const handleControlAction = async (actionId: ChatControlActionId) => {
+    if (!id || !hasValidConfig) {
+      toast('error', '请先配置 API Key')
+      return
+    }
+
+    const action = resolveChatControlAction(actionId, participants)
+
+    if (action.forceSummary) {
+      setShowSummary(true)
+      await handleGenerateSummary()
+      return
+    }
+
+    if (participants.length === 0) {
+      toast('info', '请先邀请角色加入聊天室')
+      return
+    }
+
+    if (action.targetRole && !action.targetAgent) {
+      toast('info', '当前聊天室没有匹配的角色')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await runDiscussionRound(
+        [createVirtualUserMessage(action.instruction)],
+        action.targetAgent,
+        currentTopic,
+      )
+    } finally {
+      setTypingAgentIds([])
+      setActiveFeedbackSteps([])
+      setLoading(false)
+    }
+  }
 
   const handleExportBookmarks = useCallback(() => {
     if (!room) return
@@ -918,19 +1502,23 @@ export default function ChatRoomPage() {
       toast('error', '消息发送后，角色回复失败')
     } finally {
       setTypingAgentIds([])
+      setActiveFeedbackSteps([])
       setLoading(false)
     }
   }, [
     addMessage,
+    currentTopic,
     documentMap,
     hasValidConfig,
     id,
     input,
     loading,
     messages,
+    parseTargetAgent,
     pendingAttachment,
     replyTo,
     runDiscussionRound,
+    updateDiscussionState,
     updateMessageStatus,
     user,
   ])
@@ -972,14 +1560,24 @@ export default function ChatRoomPage() {
         getEventInstruction(agent, recentConversation),
       )
 
-      if (reply && !controller.signal.aborted) {
-        addAgentMsg(agent, reply)
+      if (reply.text && !controller.signal.aborted) {
+        addAgentMsg(agent, reply.text)
+        recordStrategyLog({
+          agentId: agent.id,
+          selectedAgentName: agent.name,
+          strategy: roomStrategy,
+          contextSummary: reply.contextSummary,
+          usedContext: reply.usedContext,
+          finalPosture: reply.finalPosture,
+          wasPostureTranslated: Boolean(reply.wasPostureTranslated),
+          outputWasRewritten: Boolean(reply.outputWasRewritten),
+        })
       }
 
       setTypingAgentIds([])
       setLoading(false)
     },
-    [addAgentMsg, addMessage, addParticipant, doc, getAgentReply, getEventInstruction, hasValidConfig, id, messages, room?.topic]
+    [addAgentMsg, addMessage, addParticipant, doc, getAgentReply, getEventInstruction, hasValidConfig, id, messages, recordStrategyLog, room?.topic, roomStrategy]
   )
 
   const availableToInvite = allAgents.filter((agent) => !participants.some((item) => item.id === agent.id))
@@ -1230,6 +1828,9 @@ export default function ChatRoomPage() {
                   {message.status === 'failed' ? <AlertCircle className="h-3 w-3 text-red-500" /> : null}
                 </span>
               ) : null
+              const metadataBadges = message.sender_type === 'agent' && message.sender_color
+                ? getMessageMetadataBadges(message)
+                : []
 
               if (message.sender_type === 'user') {
                 return (
@@ -1284,6 +1885,22 @@ export default function ChatRoomPage() {
                       </button>
                     </div>
 
+                    {metadataBadges.length > 0 ? (
+                      <div className="mb-1.5 flex flex-wrap gap-1.5">
+                        {metadataBadges.map((badge) => (
+                          <span
+                            key={badge.key}
+                            className={cn(
+                              'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                              getMetadataBadgeClass(badge.tone)
+                            )}
+                          >
+                            {badge.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
                     {replyQuote}
 
                     <div
@@ -1304,6 +1921,23 @@ export default function ChatRoomPage() {
               <TypingIndicator
                 agents={typingAgentIds.length > 0 ? participants.filter((participant) => typingAgentIds.includes(participant.id)) : participants.slice(0, 1)}
               />
+            ) : null}
+
+            {loading && feedbackDisplay.length > 0 ? (
+              <div className="ml-10 flex max-w-[78%] flex-wrap gap-1.5">
+                {feedbackDisplay.map((item) => (
+                  <span
+                    key={item.step}
+                    className={cn(
+                      'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
+                      getFeedbackToneClass(item.tone),
+                      item.active ? 'shadow-sm ring-1 ring-current/10' : 'opacity-70'
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                ))}
+              </div>
             ) : null}
           </div>
 
@@ -1391,6 +2025,7 @@ export default function ChatRoomPage() {
                       toast('success', '已收藏最近一条消息')
                     }
                   }}
+                  onControl={handleControlAction}
                   disabled={loading}
                 />
 

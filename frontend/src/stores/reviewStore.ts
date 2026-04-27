@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Review, AgentReview, Suggestion } from '@/types'
+import type { Review } from '@/types'
 import { useActivityStore } from './activityStore'
 
 interface ReviewState {
