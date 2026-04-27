@@ -533,7 +533,7 @@ export default function ChatRoomPage() {
           createVirtualUserMessage(
             doc
               ? `请围绕“${seedText}”直接开始讨论，结合文档《${doc.title}》和评审结论给出明确判断。`
-              : `请围绕“${seedText}”直接开始讨论，像真实教研群一样先抛出一个具体判断。`
+              : `请围绕“${seedText}”直接开始讨论，像真实讨论群一样先抛出一个具体判断。`
           ),
         ],
         undefined,
@@ -739,7 +739,7 @@ export default function ChatRoomPage() {
             {
               role: 'system',
               content:
-                '你是一个教研群聊总结助手。请根据以下记录生成结构化 JSON：{"keyPoints":["..."],"agreements":["..."],"disagreements":["..."],"actionItems":["..."]}。每个数组 1-5 条，只输出 JSON。',
+                '你是一个讨论群聊总结助手。请根据以下记录生成结构化 JSON：{"keyPoints":["..."],"agreements":["..."],"disagreements":["..."],"actionItems":["..."]}。每个数组 1-5 条，只输出 JSON。',
             },
             { role: 'user', content: `以下是聊天记录：\n\n${digest}` },
           ],
@@ -962,7 +962,7 @@ export default function ChatRoomPage() {
       await randomDelay(600, 1400)
       const recentConversation = messages.slice(-6)
       const introPrompt = doc
-        ? `你刚加入一个围绕《${doc.title}》的教研讨论群。请先自然打个招呼，然后结合现有讨论补上一条你最想推进的观点。`
+        ? `你刚加入一个围绕《${doc.title}》的讨论群。请先自然打个招呼，然后结合现有讨论补上一条你最想推进的观点。`
         : `你刚加入一个讨论群，主题是“${room?.topic || '自由讨论'}”。请先自然打个招呼，再补上你的观点。`
 
       const reply = await getAgentReply(

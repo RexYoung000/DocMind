@@ -108,7 +108,6 @@ export default function DocumentListPage() {
           raw_content: result.raw_content,
           structured_content: result.structured_content,
           word_count: result.word_count,
-          teaching_plan: result.teaching_plan,
           status: 'ready',
         })
         toast('success', `《${document.title}》解析完成`)

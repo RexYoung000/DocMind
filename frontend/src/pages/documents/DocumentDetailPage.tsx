@@ -183,51 +183,6 @@ export default function DocumentDetailPage() {
             </CardContent>
           </Card>
 
-          {document.teaching_plan ? (
-            <Card className="rounded-[28px]">
-              <CardHeader>
-                <h2 className="text-sm font-semibold text-gray-900">文档识别信息</h2>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {document.teaching_plan.topic ? (
-                  <div>
-                    <p className="text-xs text-gray-500">课题</p>
-                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.topic}</p>
-                  </div>
-                ) : null}
-                {document.teaching_plan.subject ? (
-                  <div>
-                    <p className="text-xs text-gray-500">学科</p>
-                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.subject}</p>
-                  </div>
-                ) : null}
-                {document.teaching_plan.grade ? (
-                  <div>
-                    <p className="text-xs text-gray-500">年级</p>
-                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.grade}</p>
-                  </div>
-                ) : null}
-                {document.teaching_plan.duration ? (
-                  <div>
-                    <p className="text-xs text-gray-500">课时</p>
-                    <p className="mt-1 font-medium text-gray-900">{document.teaching_plan.duration}</p>
-                  </div>
-                ) : null}
-                {document.teaching_plan.keyPoints?.length ? (
-                  <div>
-                    <p className="text-xs text-gray-500">重点</p>
-                    <p className="mt-1 leading-7 text-gray-700">{document.teaching_plan.keyPoints.join('；')}</p>
-                  </div>
-                ) : null}
-                {document.teaching_plan.difficulties?.length ? (
-                  <div>
-                    <p className="text-xs text-gray-500">难点</p>
-                    <p className="mt-1 leading-7 text-gray-700">{document.teaching_plan.difficulties.join('；')}</p>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
         </div>
 
         <Card className="rounded-[28px]">

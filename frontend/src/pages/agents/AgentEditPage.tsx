@@ -8,7 +8,7 @@ import type { AgentColor } from '@/types'
 
 const COLOR_OPTIONS: AgentColor[] = ['indigo', 'violet', 'pink', 'orange', 'teal', 'sky', 'slate', 'green', 'rose', 'amber', 'emerald', 'cyan']
 
-const CATEGORY_LABELS: Record<string, string> = { teacher: '教研老师', student: '学生', parent: '家长' }
+const CATEGORY_LABELS: Record<string, string> = { analyst: '分析师', engineer: '工程师', creative: '创意者', teacher: '教学者', student: '学习者', parent: '关注者' }
 
 export default function AgentEditPage() {
   const { id } = useParams<{ id: string }>()
@@ -32,13 +32,13 @@ export default function AgentEditPage() {
     return (
       <div className="space-y-6 animate-slide-up">
         <Link to="/agents" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
-          <ArrowLeft className="h-4 w-4" /> 返回教研评审团
+          <ArrowLeft className="h-4 w-4" /> 返回评审团
         </Link>
         <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
           <Bot className="mx-auto h-12 w-12 text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium">角色不存在或已被删除</p>
           <Link to="/agents" className="mt-4 inline-block rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 no-underline">
-            返回教研评审团
+            返回评审团
           </Link>
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function AgentEditPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-slide-up">
       <Link to="/agents" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
-        <ArrowLeft className="h-4 w-4" /> 返回教研评审团
+        <ArrowLeft className="h-4 w-4" /> 返回评审团
       </Link>
 
       <div className="flex items-center justify-between">

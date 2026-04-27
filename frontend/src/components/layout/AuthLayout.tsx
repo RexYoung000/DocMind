@@ -13,14 +13,14 @@ export function AuthLayout() {
           <h1 className="text-4xl font-bold leading-tight mb-4">
             多角色 AI
             <br />
-            教研案评审平台
+            文档评审平台
           </h1>
           <p className="text-lg text-white/80 leading-relaxed">
-            上传教研案，教研老师、学生、家长多视角评审，六维度精准分析。
-            进入教研研讨室深度讨论，发现教学设计的改进空间。
+            上传文档，多角色多维度交叉评审，全面分析内容质量。
+            进入聊天室深度研讨，发现改进空间，推动内容优化。
           </p>
           <div className="mt-10 flex gap-4">
-            {['📐 周老师', '🎒 小明', '📈 刘妈妈', '🧩 张老师'].map((name) => (
+            {['📐 逻辑官', '🔍 分析师', '🎨 创意官', '📋 体验师'].map((name) => (
               <div
                 key={name}
                 className="rounded-full bg-white/15 backdrop-blur px-3 py-1.5 text-sm font-medium"

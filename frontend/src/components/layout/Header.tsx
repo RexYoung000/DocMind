@@ -25,10 +25,10 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 const NAV_ITEMS = [
   { path: '/dashboard', label: '工作台', icon: LayoutDashboard },
-  { path: '/documents', label: '教研案', icon: FileText },
+  { path: '/documents', label: '文档中心', icon: FileText },
   { path: '/agents', label: '评审团', icon: Bot },
   { path: '/reviews', label: '评审大厅', icon: ClipboardCheck },
-  { path: '/chat', label: '教研研讨', icon: MessageCircle },
+  { path: '/chat', label: '聊天室', icon: MessageCircle },
 ]
 
 export function Header() {
@@ -271,7 +271,7 @@ export function Header() {
       <ConfirmDialog
         open={clearDataConfirm}
         title="重置所有本地数据"
-        description="这将清空教研案、评审角色、评审记录以及 API 配置等所有本地数据，此操作不可撤销。"
+        description="这将清空文档、评审角色、评审记录以及 API 配置等所有本地数据，此操作不可撤销。"
         confirmText="确认重置"
         variant="danger"
         onConfirm={() => {

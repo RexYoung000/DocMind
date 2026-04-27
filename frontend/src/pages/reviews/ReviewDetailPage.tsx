@@ -395,7 +395,7 @@ export default function ReviewDetailPage() {
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleCreateChat}>
                 <MessageCircle className="h-4 w-4" />
-                进入研讨
+                进入聊天室
               </Button>
               <Button variant="secondary" onClick={handleExport}>
                 <Download className="h-4 w-4" />
