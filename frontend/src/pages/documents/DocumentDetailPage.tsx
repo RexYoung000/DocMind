@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 
 const FILE_ICON_MAP: Record<string, typeof FileText> = {
   pdf: FileText,
+  doc: File,
   docx: File,
   md: FileCode,
   txt: FileText,
@@ -29,6 +30,7 @@ const FILE_ICON_MAP: Record<string, typeof FileText> = {
 
 const FILE_COLOR_MAP: Record<string, string> = {
   pdf: 'bg-red-50 text-red-500',
+  doc: 'bg-blue-50 text-blue-500',
   docx: 'bg-blue-50 text-blue-500',
   md: 'bg-slate-100 text-slate-600',
   txt: 'bg-gray-100 text-gray-500',

@@ -27,7 +27,7 @@ const QUICK_ACTIONS = [
   {
     icon: Upload,
     label: '上传文档',
-    description: '支持 PDF、Word、Markdown 和 TXT，上传后会自动提取结构化信息。',
+    description: '支持 PDF、DOC、DOCX、Markdown 和 TXT，上传后会自动提取结构化信息。',
     path: '/documents',
     badge: '文档入口',
     tone: 'bg-blue-50 text-blue-600',

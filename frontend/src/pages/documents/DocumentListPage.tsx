@@ -28,6 +28,7 @@ import type { Document } from '@/types'
 
 const FILE_ICONS: Record<string, typeof FileText> = {
   pdf: FileText,
+  doc: File,
   docx: File,
   md: FileCode,
   txt: File,
@@ -35,6 +36,7 @@ const FILE_ICONS: Record<string, typeof FileText> = {
 
 const FILE_COLORS: Record<string, string> = {
   pdf: 'bg-red-50 text-red-500',
+  doc: 'bg-blue-50 text-blue-500',
   docx: 'bg-blue-50 text-blue-500',
   md: 'bg-slate-100 text-slate-600',
   txt: 'bg-gray-100 text-gray-500',
@@ -89,7 +91,7 @@ export default function DocumentListPage() {
     async (file: File) => {
       const ext = `.${file.name.split('.').pop()?.toLowerCase() || ''}`
       if (!SUPPORTED_EXTENSIONS.includes(ext)) {
-        toast('error', `不支持的文件格式：${ext}，请上传 PDF、DOCX、MD 或 TXT`)
+        toast('error', `不支持的文件格式：${ext}，请上传 PDF、DOC、DOCX、MD 或 TXT`)
         return
       }
 
@@ -108,6 +110,7 @@ export default function DocumentListPage() {
           raw_content: result.raw_content,
           structured_content: result.structured_content,
           word_count: result.word_count,
+          doc_metadata: result.doc_metadata,
           status: 'ready',
         })
         toast('success', `《${document.title}》解析完成`)
@@ -173,7 +176,7 @@ export default function DocumentListPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">Upload Flow</p>
                 <h2 className="mt-2 text-2xl font-bold text-gray-900">把文档整理好，后面的评审和研讨才有依据。</h2>
                 <p className="mt-3 max-w-xl text-sm leading-7 text-gray-600">
-                  支持 PDF、Word、Markdown 和 TXT。解析完成后可直接进入文档详情、发起评审或进入关联研讨。
+                  支持 PDF、DOC、DOCX、Markdown 和 TXT。解析完成后可直接进入文档详情、发起评审或进入关联研讨。
                 </p>
               </div>
             </div>
@@ -283,6 +286,7 @@ export default function DocumentListPage() {
 
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Badge variant="info">PDF</Badge>
+                <Badge variant="info">DOC</Badge>
                 <Badge variant="info">DOCX</Badge>
                 <Badge variant="info">MD</Badge>
                 <Badge variant="info">TXT</Badge>
@@ -293,7 +297,7 @@ export default function DocumentListPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.docx,.md,.txt"
+                accept=".pdf,.doc,.docx,.md,.txt"
                 className="hidden"
                 multiple
                 onChange={(event) => event.target.files && handleFiles(event.target.files)}

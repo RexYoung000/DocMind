@@ -13,7 +13,7 @@ const STEPS = [
   {
     icon: FileText,
     title: '1. 上传文档',
-    description: '首先到文档中心上传你的文档。支持 PDF、Word、Markdown 和纯文本格式，系统会自动解析文档内容。',
+    description: '首先到文档中心上传你的文档。支持 PDF、DOC、DOCX、Markdown 和纯文本格式，系统会自动解析文档内容。',
     action: '/documents',
     actionLabel: '前往文档中心',
     color: 'bg-blue-50 text-blue-600',
