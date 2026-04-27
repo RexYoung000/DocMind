@@ -38,8 +38,10 @@ Thumbs.db
 .tmp/
 frontend/.tmp/
 .auto-coding/testing/
+.auto-coding/audit/
 frontend/playwright-report/
 frontend/test-results/
+.claude/settings.local.json
 
 # Deploy scripts (contain credentials)
 deploy*.py
