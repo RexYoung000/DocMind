@@ -1581,6 +1581,7 @@ export default function ChatRoomPage() {
   )
 
   const availableToInvite = allAgents.filter((agent) => !participants.some((item) => item.id === agent.id))
+  const hasDocumentPanel = Boolean(showDoc && doc)
 
   if (!room) {
     return (
@@ -1600,8 +1601,8 @@ export default function ChatRoomPage() {
   }
 
   return (
-    <div className="animate-slide-up" style={{ height: 'calc(100vh - 112px)' }}>
-      <div className="mb-4 flex items-center justify-between">
+    <div className="flex min-h-0 flex-col animate-slide-up" style={{ height: 'calc(100vh - 112px)' }}>
+      <div className="mb-4 flex shrink-0 items-center justify-between">
         <Link to="/chat" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
           <ArrowLeft className="h-4 w-4" /> 返回聊天室列表
         </Link>
@@ -1706,7 +1707,12 @@ export default function ChatRoomPage() {
         </div>
       ) : null}
 
-      <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div
+        className={cn(
+          'grid min-h-0 flex-1 grid-cols-1 gap-4',
+          hasDocumentPanel ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1',
+        )}
+      >
         {showDoc && doc ? (
           <aside className="hidden min-h-0 flex-col gap-3 lg:flex">
             <div className="flex min-h-0 max-h-[38%] flex-col rounded-2xl border border-gray-200 bg-white/90 shadow-sm">
@@ -1778,7 +1784,7 @@ export default function ChatRoomPage() {
           </aside>
         ) : null}
 
-        <main className="relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+        <main className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
             <div>
               <h2 className="text-base font-semibold text-gray-950">{room.topic}</h2>
