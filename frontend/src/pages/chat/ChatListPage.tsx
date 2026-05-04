@@ -35,7 +35,7 @@ const CONFLICT_OPTIONS: Array<{ value: ConflictLevel; label: string }> = [
 const ROOM_TONE_OPTIONS: Array<{ value: RoomTone; label: string }> = [
   { value: 'review-meeting', label: '专业评审会' },
   { value: 'brainstorm', label: '热烈头脑风暴' },
-  { value: 'teaching-seminar', label: '教学研讨课堂' },
+  { value: 'teaching-seminar', label: '深度研讨会' },
   { value: 'product-review', label: '产品评审会' },
 ]
 
@@ -176,9 +176,11 @@ export default function ChatListPage() {
       sender_type: 'agent',
       sender_id: 'system',
       sender_name: '系统',
-      content: review
-        ? `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入。\n角色们正在阅读评审报告，稍后会围绕共识、分歧和建议展开讨论。`
-        : `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入，大家正在热身中...`,
+      content: discussionMode === 'free'
+        ? `聊天室已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入。\n你先说一句想聊什么，角色会优先接住你的话题。`
+        : review
+          ? `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入。\n角色们正在阅读评审报告，稍后会围绕共识、分歧和建议展开讨论。`
+          : `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入，大家正在热身中...`,
       created_at: new Date().toISOString(),
     })
     setShowCreateModal(false)
@@ -377,7 +379,7 @@ export default function ChatListPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl animate-slide-up mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-semibold text-gray-900">{review ? '配置教研研讨' : '新建聊天室'}</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{review ? '配置评审研讨' : '新建聊天室'}</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>

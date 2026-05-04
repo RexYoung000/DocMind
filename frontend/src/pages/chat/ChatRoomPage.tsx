@@ -167,9 +167,9 @@ function buildChatSystemPrompt(
   const modeGuide = mode === 'debate'
     ? `
 当前是辩论模式：
-- 不要每个人都给一份完整评审，要像真实教研会一样接话、反驳、追问。
+- 不要每个人都给一份完整评审，要像真实评审会一样接话、反驳、追问。
 - 如果不同意，请点名回应上一位角色，说清楚“我不同意哪一点”和“为什么”。
-- 允许保留分歧，但必须落到教案、课堂环节、学生理解或评价方式上。`
+- 允许保留分歧，但必须落到文档内容、结构逻辑、证据依据或行动建议上。`
     : mode === 'moderated'
       ? `
 当前是引导式讨论：
@@ -178,8 +178,15 @@ function buildChatSystemPrompt(
 - 需要有人阶段性收束，把共识和待确认点说清楚。`
       : `
 当前是自由讨论：
-- 像群聊一样自然发言，优先回应别人刚说过的话。
+- 用户当下的意图优先于既定议题。用户想闲聊、换话题或表达“不想讨论材料”时，停止推进文档/评审议题。
+- 像真人聊天一样先接住用户刚说的话，再用一句短问题把话轮交还给用户。
 - 不要重复别人的句式和结论。`
+
+  const responseGuide = mode === 'free'
+    ? `3. 用户主动问到文档、评审、证据或方案问题时，再结合材料展开；否则不要强行把话题拉回材料。
+4. 回应要以角色身份自然说话，短、具体、有人味，不要自顾自开会。`
+    : `3. 不要泛泛而谈，要尽量落到文档内容、结构逻辑、证据依据、表达效果和可执行建议这些具体点上。
+4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问“有没有文档”。`
 
   const toneGuide = getRoomToneGuide(strategy?.roomTone)
   const citationGuide = getCitationGuide(strategy?.citationPolicy)
@@ -197,10 +204,9 @@ ${boundaryGuide}
 ${docContext}
 
 记住：
-1. 你正在一个教研讨论群里发言，语气要像真实群聊，不要像写长报告。
+1. 你正在一个多角色评审讨论群里发言，语气要像真实群聊，不要像写长报告。
 2. 回答控制在 2-4 句，优先回应别人已经说过的话。
-3. 不要泛泛而谈，要尽量落到教学设计、课堂执行、学生理解、评价反馈这些具体点上。
-4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问“有没有文档”。`
+${responseGuide}`
 }
 
 function getRoomToneGuide(tone?: ChatRoomStrategy['roomTone']) {
@@ -208,7 +214,7 @@ function getRoomToneGuide(tone?: ChatRoomStrategy['roomTone']) {
     case 'brainstorm':
       return '\n聊天室气质：头脑风暴。允许提出新角度，但每次只贡献一个清晰想法。'
     case 'teaching-seminar':
-      return '\n聊天室气质：教学研讨。优先围绕课堂实施、学生理解和可观察证据发言。'
+      return '\n聊天室气质：深度研讨。优先围绕材料依据、关键判断和可观察证据发言。'
     case 'product-review':
       return '\n聊天室气质：产品评审。优先围绕用户价值、流程阻力、风险和优先级发言。'
     case 'review-meeting':
@@ -369,7 +375,21 @@ function buildAgendaFromContext(
   primaryDocument: Document | null,
   review: Review | null | undefined,
   topicTags: string[] | undefined,
+  mode: DiscussionMode,
 ) {
+  const userTopic = roomTopic.trim() || '自由讨论'
+  if (mode === 'free') {
+    return [
+      {
+        id: `agenda-${createId()}`,
+        text: userTopic,
+        source: 'user' as const,
+        priority: 1,
+        status: 'active' as const,
+      },
+    ] satisfies ChatAgendaItem[]
+  }
+
   const topicPool = new TopicPool()
   if (primaryDocument) topicPool.loadFromDocument(primaryDocument)
   if (review) topicPool.loadFromReview(review)
@@ -380,7 +400,7 @@ function buildAgendaFromContext(
     return [
       {
         id: `agenda-${createId()}`,
-        text: roomTopic,
+        text: userTopic,
         source: 'user' as const,
         priority: 1,
         status: 'active' as const,
@@ -444,6 +464,10 @@ function getLatestUserMessage(messages: ChatMessage[]) {
   return [...messages].reverse().find((message) => message.sender_type === 'user')
 }
 
+function isRealUserMessage(message?: ChatMessage) {
+  return Boolean(message && message.sender_type === 'user' && message.sender_id !== 'virtual-user')
+}
+
 function inferUserIntent(message?: ChatMessage): DiscussionTurnIntent | null {
   const content = message?.content || ''
   if (!content) return null
@@ -454,10 +478,14 @@ function inferUserIntent(message?: ChatMessage): DiscussionTurnIntent | null {
   return 'open'
 }
 
-function buildRoundFocus(recentMessages: ChatMessage[], topic?: ChatAgendaItem | null) {
+function buildRoundFocus(recentMessages: ChatMessage[], topic?: ChatAgendaItem | null, mode?: DiscussionMode) {
   const latestUserMessage = getLatestUserMessage(recentMessages)
   const userFocus = latestUserMessage?.content.replace(/\s+/g, ' ').trim()
   const topicFocus = topic?.text || ''
+
+  if (mode === 'free' && isRealUserMessage(latestUserMessage) && userFocus) {
+    return `用户刚才说：“${userFocus}”。请优先回应这句话；只有用户主动提到材料、评审、证据或方案问题时，才回到既定议题。`
+  }
 
   if (userFocus && topicFocus && !userFocus.includes(topicFocus)) {
     return `用户刚才说：“${userFocus}”。当前议题：“${topicFocus}”。`
@@ -502,6 +530,25 @@ function buildDiscussionTurns(
   targetAgent?: Agent,
   capabilityProfiles?: Record<string, CapabilityProfile>,
 ) {
+  const latestUserMessage = getLatestUserMessage(recentMessages)
+  const userIntent = inferUserIntent(latestUserMessage)
+  const topicText = buildRoundFocus(recentMessages, topic, mode)
+
+  if (targetAgent) {
+    return [{ agent: targetAgent, intent: userIntent || 'open', focus: topicText }] satisfies DiscussionTurn[]
+  }
+
+  if (mode === 'free' && isRealUserMessage(latestUserMessage)) {
+    const responder = pickBestAgent(
+      participants,
+      recentMessages,
+      topicText,
+      [],
+      (agent) => getUserAlignmentBonus(agent, latestUserMessage)
+    )
+    return responder ? [{ agent: responder, intent: userIntent || 'open', focus: topicText }] satisfies DiscussionTurn[] : []
+  }
+
   const routedEvents = routeChatEvents({
     messages: recentMessages,
     participants,
@@ -535,13 +582,6 @@ function buildDiscussionTurns(
       wasPostureTranslated: turn.wasPostureTranslated,
       reason: turn.reason,
     })) satisfies DiscussionTurn[]
-  }
-
-  const latestUserMessage = getLatestUserMessage(recentMessages)
-  const userIntent = inferUserIntent(latestUserMessage)
-  const topicText = buildRoundFocus(recentMessages, topic)
-  if (targetAgent) {
-    return [{ agent: targetAgent, intent: userIntent || 'open', focus: topicText }] satisfies DiscussionTurn[]
   }
 
   const collisions = detectCollisions(recentMessages, participants, 8)
@@ -642,7 +682,7 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
     `讨论焦点：“${turn.focus.slice(0, 80)}”。`,
     target,
     '不要重新完整评审全文，不要复述背景，不要输出报告格式。',
-    '像真实教研群发言：2-4句，有态度，有具体理由。',
+    '像真实评审群发言：2-4句，有态度，有具体理由。',
   ]
 
   const intentRule = (() => {
@@ -654,11 +694,11 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
       case 'challenge':
         return '必须明确说出你不同意或担心哪一点，并给出替代判断。可以点名，但不要吵架。'
       case 'support':
-        return '先说你赞同哪一点，再补一个别人没说到的证据或课堂后果。'
+        return '先说你赞同哪一点，再补一个别人没说到的证据或影响。'
       case 'question':
         return '提出一个会推动讨论继续往下走的问题，问题后面补一句你为什么问。'
       case 'evidence':
-        return '尽量引用文档、评审结论或课堂环节作为证据，不要空泛。'
+        return '尽量引用文档、评审结论或具体片段作为证据，不要空泛。'
       case 'synthesize':
         return mode === 'debate'
           ? '请收束当前分歧：哪一点已有共识，哪一点还需要继续争。最后给一个下一步动作。'
@@ -822,9 +862,9 @@ export default function ChatRoomPage() {
     if (!id || !room) return
     if ((room.pendingTopics || []).length > 0) return
 
-    const agendaItems = buildAgendaFromContext(room.topic, doc, review, room.topicTags)
+    const agendaItems = buildAgendaFromContext(room.topic, doc, review, room.topicTags, discussionMode)
     setAgenda(id, agendaItems, agendaItems[0]?.id)
-  }, [doc, id, review, room, setAgenda])
+  }, [discussionMode, doc, id, review, room, setAgenda])
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -1165,7 +1205,7 @@ export default function ChatRoomPage() {
           [
             '请直接回应用户或当前最后一条消息。',
             skippedForRepetition > 0 ? buildRepetitionRecoveryInstruction('skip') : '',
-            buildTurnInstruction({ agent: fallbackAgent, intent: inferUserIntent(getLatestUserMessage(conversation)) || 'open', focus: buildRoundFocus(conversation, topic) }, 0, discussionMode),
+            buildTurnInstruction({ agent: fallbackAgent, intent: inferUserIntent(getLatestUserMessage(conversation)) || 'open', focus: buildRoundFocus(conversation, topic, discussionMode) }, 0, discussionMode),
           ].filter(Boolean).join('\n'),
         )
         setTypingAgentIds([])
@@ -1230,6 +1270,11 @@ export default function ChatRoomPage() {
     const kickoffKey = `${id}:${activeTopic?.id || 'room'}`
     if (kickoffSeedRef.current === kickoffKey) return
 
+    if (discussionMode === 'free') {
+      kickoffSeedRef.current = kickoffKey
+      return
+    }
+
     kickoffSeedRef.current = kickoffKey
     const timer = window.setTimeout(() => {
       if (abortRef.current?.signal.aborted) return
@@ -1239,7 +1284,7 @@ export default function ChatRoomPage() {
           createVirtualUserMessage(
             doc
               ? `请围绕“${seedText}”直接开始讨论，结合文档《${doc.title}》和评审结论给出明确判断。`
-              : `请围绕“${seedText}”直接开始讨论，像真实教研群一样先抛出一个具体判断。`
+              : `请围绕“${seedText}”直接开始讨论，像真实评审群一样先抛出一个具体判断。`
           ),
         ],
         undefined,
@@ -1248,7 +1293,7 @@ export default function ChatRoomPage() {
     }, 900)
 
     return () => window.clearTimeout(timer)
-  }, [agenda, currentTopic, doc, hasValidConfig, id, loading, messages, participants.length, room, runDiscussionRound])
+  }, [agenda, currentTopic, discussionMode, doc, hasValidConfig, id, loading, messages, participants.length, room, runDiscussionRound])
 
   const parseTargetAgent = useCallback((text: string) => {
     const match = text.match(/^@(\S+)\s+/)
@@ -1295,7 +1340,7 @@ export default function ChatRoomPage() {
             {
               role: 'system',
               content:
-                '你是一个教研群聊总结助手。请根据以下记录生成结构化 JSON：{"keyPoints":["..."],"agreements":["..."],"disagreements":["..."],"actionItems":["..."]}。每个数组 1-5 条，只输出 JSON。',
+                '你是一个评审群聊总结助手。请根据以下记录生成结构化 JSON：{"keyPoints":["..."],"agreements":["..."],"disagreements":["..."],"actionItems":["..."]}。每个数组 1-5 条，只输出 JSON。',
             },
             { role: 'user', content: `以下是聊天记录：\n\n${digest}` },
           ],
@@ -1597,7 +1642,7 @@ export default function ChatRoomPage() {
       await randomDelay(600, 1400)
       const recentConversation = messages.slice(-6)
       const introPrompt = doc
-        ? `你刚加入一个围绕《${doc.title}》的教研讨论群。请先自然打个招呼，然后结合现有讨论补上一条你最想推进的观点。`
+        ? `你刚加入一个围绕《${doc.title}》的评审讨论群。请先自然打个招呼，然后结合现有讨论补上一条你最想推进的观点。`
         : `你刚加入一个讨论群，主题是“${room?.topic || '自由讨论'}”。请先自然打个招呼，再补上你的观点。`
 
       const reply = await getAgentReply(

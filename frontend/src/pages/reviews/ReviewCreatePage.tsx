@@ -1181,88 +1181,54 @@ export default function ReviewCreatePage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {reviewMode === 'single' && (
-          <div className="space-y-6 lg:col-span-2">
-            <Card className="rounded-[28px]">
-              <CardHeader>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">Step 1</p>
-                  <h2 className="mt-2 text-lg font-semibold text-gray-900">选择文档</h2>
+          <Card className="rounded-[28px]">
+            <CardHeader>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">Step 1</p>
+                <h2 className="mt-2 text-lg font-semibold text-gray-900">选择文档</h2>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {documents.length === 0 ? (
+                <div className="py-8 text-center">
+                  <FileText className="mx-auto mb-2 h-10 w-10 text-gray-300" />
+                  <p className="text-sm text-gray-500">还没有可评审的文档</p>
+                  <Link to="/documents" className="mt-2 inline-block text-xs font-medium text-primary-600 no-underline hover:underline">
+                    去上传文档
+                  </Link>
                 </div>
-              </CardHeader>
-              <CardContent>
-                {documents.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <FileText className="mx-auto mb-2 h-10 w-10 text-gray-300" />
-                    <p className="text-sm text-gray-500">还没有可评审的文档</p>
-                    <Link to="/documents" className="mt-2 inline-block text-xs font-medium text-primary-600 no-underline hover:underline">
-                      去上传文档
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-                    <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-                      {documents.map((document) => (
-                        <button
-                          key={document.id}
-                          onClick={() => setSelectedDocId(document.id)}
-                          className={cn(
-                            'flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors',
-                            selectedDocId === document.id
-                              ? 'border-primary-500 bg-primary-50'
-                              : 'border-gray-200 bg-white hover:bg-gray-50'
-                          )}
-                        >
-                          <div className={cn(
-                            'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
-                            selectedDocId === document.id ? 'bg-white text-primary-600' : 'bg-gray-50 text-gray-400'
-                          )}>
-                            <FileText className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-gray-900">{document.title}</p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              {document.word_count?.toLocaleString() || 0} 字 · {document.file_type.toUpperCase()}
-                            </p>
-                          </div>
-                          {selectedDocId === document.id ? <Check className="h-4 w-4 shrink-0 text-primary-600" /> : null}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="rounded-[24px] border border-primary-100 bg-primary-50/50 p-5">
-                      {selectedDoc ? (
-                        <div className="flex h-full flex-col gap-4">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">案例详情</p>
-                            <h3 className="mt-2 text-xl font-semibold text-gray-900">{selectedDoc.title}</h3>
-                            <p className="mt-2 text-xs text-gray-500">
-                              {selectedDoc.word_count?.toLocaleString() || 0} 字 · {selectedDoc.file_type.toUpperCase()} · 已上传文档
-                            </p>
-                          </div>
-                          {selectedDoc.summary ? (
-                            <p className="rounded-2xl bg-white/80 p-3 text-sm leading-7 text-gray-700">{selectedDoc.summary}</p>
-                          ) : null}
-                          <div className="min-h-32 flex-1 rounded-2xl bg-white/80 p-3">
-                            <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-gray-700">
-                              {(selectedDoc.raw_content || '暂无可预览内容').slice(0, 1200)}
-                            </p>
-                          </div>
-                          <Button onClick={handleStart} disabled={!canStart} size="lg" className="w-full justify-center py-6 text-base">
-                            <Play className="h-5 w-5" />
-                            开始评审
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex h-full min-h-72 items-center justify-center text-center text-sm text-gray-500">
-                          选择一个文档后查看案例详情
-                        </div>
+              ) : (
+                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                  {documents.map((document) => (
+                    <button
+                      key={document.id}
+                      onClick={() => setSelectedDocId(document.id)}
+                      className={cn(
+                        'flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors',
+                        selectedDocId === document.id
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
                       )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                    >
+                      <div className={cn(
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
+                        selectedDocId === document.id ? 'bg-white text-primary-600' : 'bg-gray-50 text-gray-400'
+                      )}>
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">{document.title}</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {document.word_count?.toLocaleString() || 0} 字 · {document.file_type.toUpperCase()}
+                        </p>
+                      </div>
+                      {selectedDocId === document.id ? <Check className="h-4 w-4 shrink-0 text-primary-600" /> : null}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         <Card className="rounded-[28px]">
