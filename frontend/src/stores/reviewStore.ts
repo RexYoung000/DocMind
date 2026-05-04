@@ -6,6 +6,7 @@ import { useActivityStore } from './activityStore'
 interface ReviewState {
   reviews: Review[]
   addReview: (review: Review) => void
+  addCompareReview: (review: Review) => void
   updateReview: (id: string, updates: Partial<Review>) => void
   getReview: (id: string) => Review | undefined
   getReviewsByDocument: (docId: string) => Review[]
@@ -19,6 +20,14 @@ export const useReviewStore = create<ReviewState>()(
 
       addReview: (review) => {
         set((state) => ({ reviews: [review, ...state.reviews] }))
+      },
+
+      addCompareReview: (review) => {
+        set((state) => ({ reviews: [review, ...state.reviews] }))
+        useActivityStore.getState().addActivity({
+          type: 'review',
+          text: `完成了对比评审「${review.document?.title || '未知文档'}」`,
+        })
       },
 
       updateReview: (id, updates) => {

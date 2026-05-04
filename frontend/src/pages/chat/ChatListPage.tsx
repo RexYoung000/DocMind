@@ -58,6 +58,7 @@ export default function ChatListPage() {
   const allReviews = useReviewStore((s) => s.reviews)
   const review = useMemo(() => reviewId ? allReviews.find((r) => r.id === reviewId) : null, [allReviews, reviewId])
   const agents = useAgentStore((s) => s.agents)
+  const availableAgents = review?.agents?.length ? review.agents : agents
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'closed'>('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newTopic, setNewTopic] = useState('')
@@ -84,38 +85,18 @@ export default function ChatListPage() {
     }
 
     const participants = review.agents || []
-    const room: ChatRoom = {
-      id: createId(),
-      document_id: review.document_id,
-      review_id: reviewId,
-      owner_id: user?.id || '',
-      topic: `关于《${review.document?.title || '文档'}》的评审讨论`,
-      status: 'active',
-      participants,
-      discussionMode: 'moderated',
-      strategy: {
-        ...DEFAULT_CHAT_ROOM_STRATEGY,
-        discussionMode: 'moderated',
-      },
-      discussionState: 'idle',
-      topicTags: [
-        ...(review.summary?.pain_points || []),
-        ...(review.summary?.top_suggestions?.map((item) => item.title || item.content) || []),
-      ].slice(0, 5),
-      created_at: new Date().toISOString(),
-    }
-    createRoom(room)
-    addMessage(room.id, {
-      id: createId(),
-      room_id: room.id,
-      sender_type: 'agent',
-      sender_id: 'system',
-      sender_name: '系统',
-      content: `讨论群已建好，${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入。\n角色们正在阅读文档，稍后会自动发起讨论。你也可以随时 @某人 提问。`,
-      created_at: new Date().toISOString(),
-    })
-    navigate(`/chat/${room.id}`, { replace: true })
-  }, [reviewId, review, rooms, user, navigate, createRoom, addMessage])
+    window.setTimeout(() => {
+      setNewTopic(`关于《${review.document?.title || '文档'}》的评审讨论`)
+      setSelectedAgentIds(participants.map((agent) => agent.id))
+      setDiscussionMode('moderated')
+      setContextDepth(DEFAULT_CHAT_ROOM_STRATEGY.contextDepth)
+      setInitiativeLevel(DEFAULT_CHAT_ROOM_STRATEGY.initiativeLevel)
+      setConflictLevel(DEFAULT_CHAT_ROOM_STRATEGY.conflictLevel)
+      setRoomTone(DEFAULT_CHAT_ROOM_STRATEGY.roomTone)
+      setFeedbackLevel(DEFAULT_CHAT_ROOM_STRATEGY.feedbackLevel)
+      setShowCreateModal(true)
+    }, 0)
+  }, [reviewId, review, rooms, navigate])
 
   // Click-outside to close menu
   useEffect(() => {
@@ -131,7 +112,7 @@ export default function ChatListPage() {
   )
 
   const openCreateModal = () => {
-    if (agents.length === 0) {
+    if (availableAgents.length === 0) {
       toast('info', '请先添加角色才能创建聊天室')
       return
     }
@@ -157,7 +138,7 @@ export default function ChatListPage() {
       toast('info', '请至少选择一个角色')
       return
     }
-    const participants = agents.filter((a) => selectedAgentIds.includes(a.id))
+    const participants = availableAgents.filter((a) => selectedAgentIds.includes(a.id))
     const topic = newTopic.trim() || '自由讨论'
     const modeLabel = discussionMode === 'debate' ? '辩论' : discussionMode === 'moderated' ? '引导' : '自由'
     const strategy = {
@@ -171,7 +152,8 @@ export default function ChatListPage() {
     }
     const room: ChatRoom = {
       id: createId(),
-      document_id: '',
+      document_id: review?.document_id || '',
+      review_id: review?.id,
       owner_id: user?.id || '',
       topic,
       status: 'active',
@@ -179,6 +161,12 @@ export default function ChatListPage() {
       discussionMode,
       strategy,
       discussionState: 'idle',
+      topicTags: review
+        ? [
+            ...(review.summary?.pain_points || []),
+            ...(review.summary?.top_suggestions?.map((item) => item.title || item.content) || []),
+          ].slice(0, 5)
+        : undefined,
       created_at: new Date().toISOString(),
     }
     createRoom(room)
@@ -188,7 +176,9 @@ export default function ChatListPage() {
       sender_type: 'agent',
       sender_id: 'system',
       sender_name: '系统',
-      content: `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入，大家正在热身中...`,
+      content: review
+        ? `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入。\n角色们正在阅读评审报告，稍后会围绕共识、分歧和建议展开讨论。`
+        : `讨论群已建好（${modeLabel}讨论模式）。${participants.map((a) => `${a.avatar || ''} ${a.name}`).join('、')} 已加入，大家正在热身中...`,
       created_at: new Date().toISOString(),
     })
     setShowCreateModal(false)
@@ -387,7 +377,7 @@ export default function ChatListPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl animate-slide-up mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-semibold text-gray-900">新建聊天室</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{review ? '配置教研研讨' : '新建聊天室'}</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 bg-transparent border-0 cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
@@ -524,10 +514,10 @@ export default function ChatListPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  选择参与的角色 ({selectedAgentIds.length}/{agents.length})
+                  选择参与的角色 ({selectedAgentIds.length}/{availableAgents.length})
                 </label>
                 <div className="max-h-52 overflow-y-auto space-y-1.5 rounded-lg border border-gray-200 p-2">
-                  {agents.map((agent) => {
+                  {availableAgents.map((agent) => {
                     const isSelected = selectedAgentIds.includes(agent.id)
                     return (
                       <button

@@ -75,7 +75,7 @@ import { isModelConfigValid, useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createId } from '@/utils/id'
-import type { ChatMessage, ChatMessageAttachment, Agent, DiscussionMode, Document, Review, ChatAgendaItem, DiscussionState, ChatRoomStrategy } from '@/types'
+import type { ChatMessage, ChatMessageAttachment, Agent, DiscussionMode, Document, Review, ChatAgendaItem, DiscussionState, ChatRoomStrategy, Suggestion } from '@/types'
 
 const EMPTY_MESSAGES: ChatMessage[] = []
 const EMPTY_PARTICIPANTS: Agent[] = []
@@ -167,9 +167,9 @@ function buildChatSystemPrompt(
   const modeGuide = mode === 'debate'
     ? `
 当前是辩论模式：
-- 不要每个人都给一份完整评审，要像真实讨论组一样接话、反驳、追问。
+- 不要每个人都给一份完整评审，要像真实教研会一样接话、反驳、追问。
 - 如果不同意，请点名回应上一位角色，说清楚“我不同意哪一点”和“为什么”。
-- 允许保留分歧，但必须落到具体论据、内容细节或判断标准上。`
+- 允许保留分歧，但必须落到教案、课堂环节、学生理解或评价方式上。`
     : mode === 'moderated'
       ? `
 当前是引导式讨论：
@@ -188,6 +188,7 @@ function buildChatSystemPrompt(
     : ''
 
   return `${agent.system_prompt}
+你必须使用简体中文回复。
 ${teammates}
 ${modeGuide}
 ${toneGuide}
@@ -196,10 +197,10 @@ ${boundaryGuide}
 ${docContext}
 
 记住：
-1. 你正在一个讨论组里发言，语气要像真实群聊，不要像写长报告。
+1. 你正在一个教研讨论群里发言，语气要像真实群聊，不要像写长报告。
 2. 回答控制在 2-4 句，优先回应别人已经说过的话。
-3. 不要泛泛而谈，要尽量落到具体论据、内容细节或评价标准上。
-4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问”有没有文档”。`
+3. 不要泛泛而谈，要尽量落到教学设计、课堂执行、学生理解、评价反馈这些具体点上。
+4. 如果群里已经有文档或评审结论，就基于内容说话，不要再问“有没有文档”。`
 }
 
 function getRoomToneGuide(tone?: ChatRoomStrategy['roomTone']) {
@@ -641,7 +642,7 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
     `讨论焦点：“${turn.focus.slice(0, 80)}”。`,
     target,
     '不要重新完整评审全文，不要复述背景，不要输出报告格式。',
-    '像真实讨论组发言：2-4句，有态度，有具体理由。',
+    '像真实教研群发言：2-4句，有态度，有具体理由。',
   ]
 
   const intentRule = (() => {
@@ -653,11 +654,11 @@ function buildTurnInstruction(turn: DiscussionTurn, index: number, mode: Discuss
       case 'challenge':
         return '必须明确说出你不同意或担心哪一点，并给出替代判断。可以点名，但不要吵架。'
       case 'support':
-        return '先说你赞同哪一点，再补一个别人没说到的证据或推论。'
+        return '先说你赞同哪一点，再补一个别人没说到的证据或课堂后果。'
       case 'question':
         return '提出一个会推动讨论继续往下走的问题，问题后面补一句你为什么问。'
       case 'evidence':
-        return '尽量引用文档、评审结论或具体内容作为证据，不要空泛。'
+        return '尽量引用文档、评审结论或课堂环节作为证据，不要空泛。'
       case 'synthesize':
         return mode === 'debate'
           ? '请收束当前分歧：哪一点已有共识，哪一点还需要继续争。最后给一个下一步动作。'
@@ -741,6 +742,7 @@ export default function ChatRoomPage() {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [slashQuery, setSlashQuery] = useState<string | null>(null)
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
+  const [filteredAgentId, setFilteredAgentId] = useState<string | null>(null)
   const [pendingAttachment, setPendingAttachment] = useState<ChatMessageAttachment | null>(null)
   const [showSearch, setShowSearch] = useState(false)
   const [showBookmarks, setShowBookmarks] = useState(false)
@@ -776,6 +778,35 @@ export default function ChatRoomPage() {
       .map((message) => (message.attachment ? documentMap.get(message.attachment.documentId) : undefined))
     return uniqueDocuments(recentAttachments)
   }, [documentMap, messages])
+  const validFilteredAgentId = useMemo(
+    () => participants.some((participant) => participant.id === filteredAgentId) ? filteredAgentId : null,
+    [filteredAgentId, participants]
+  )
+  const activeFilterAgent = useMemo(
+    () => participants.find((participant) => participant.id === validFilteredAgentId) || null,
+    [validFilteredAgentId, participants]
+  )
+  const visibleMessages = useMemo(() => {
+    if (!validFilteredAgentId) return messages
+    return messages.filter((message) => (
+      message.sender_type !== 'agent' ||
+      !message.sender_color ||
+      message.sender_id === validFilteredAgentId
+    ))
+  }, [messages, validFilteredAgentId])
+  const reviewSuggestions = useMemo(() => {
+    const collected = [
+      ...(review?.summary?.top_suggestions || []),
+      ...(review?.agent_reviews || []).flatMap((agentReview) => agentReview.suggestions || []),
+    ]
+    const seen = new Set<string>()
+    return collected.filter((suggestion) => {
+      const key = `${suggestion.title || ''}-${suggestion.content}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).slice(0, 8)
+  }, [review])
 
   const recordStrategyLog = useCallback(
     (input: Omit<StrategyLogInput, 'roomId'>) => {
@@ -1208,7 +1239,7 @@ export default function ChatRoomPage() {
           createVirtualUserMessage(
             doc
               ? `请围绕“${seedText}”直接开始讨论，结合文档《${doc.title}》和评审结论给出明确判断。`
-              : `请围绕“${seedText}”直接开始讨论，像真实讨论群一样先抛出一个具体判断。`
+              : `请围绕“${seedText}”直接开始讨论，像真实教研群一样先抛出一个具体判断。`
           ),
         ],
         undefined,
@@ -1264,7 +1295,7 @@ export default function ChatRoomPage() {
             {
               role: 'system',
               content:
-                '你是一个讨论群聊总结助手。请根据以下记录生成结构化 JSON：{"keyPoints":["..."],"agreements":["..."],"disagreements":["..."],"actionItems":["..."]}。每个数组 1-5 条，只输出 JSON。',
+                '你是一个教研群聊总结助手。请根据以下记录生成结构化 JSON：{"keyPoints":["..."],"agreements":["..."],"disagreements":["..."],"actionItems":["..."]}。每个数组 1-5 条，只输出 JSON。',
             },
             { role: 'user', content: `以下是聊天记录：\n\n${digest}` },
           ],
@@ -1387,6 +1418,22 @@ export default function ChatRoomPage() {
       fileType: document.file_type,
     })
     setShowDocPicker(false)
+    inputRef.current?.focus()
+  }, [])
+
+  const handleFollowUp = useCallback((message: ChatMessage) => {
+    const quotedContent = message.content.replace(/\s+/g, ' ').trim().slice(0, 120)
+    setReplyTo(message)
+    setInput(`@${message.sender_name} 针对${message.sender_name}的观点：“${quotedContent}”\n\n我想追问：`)
+    inputRef.current?.focus()
+  }, [])
+
+  const handleQuoteSuggestion = useCallback((suggestion: Suggestion) => {
+    const suggestionText = suggestion.title
+      ? `${suggestion.title}：${suggestion.content}`
+      : suggestion.content
+    setInput(`引用评审建议：“${suggestionText}”\n\n请围绕这条建议展开讨论。`)
+    setReplyTo(null)
     inputRef.current?.focus()
   }, [])
 
@@ -1550,7 +1597,7 @@ export default function ChatRoomPage() {
       await randomDelay(600, 1400)
       const recentConversation = messages.slice(-6)
       const introPrompt = doc
-        ? `你刚加入一个围绕《${doc.title}》的讨论群。请先自然打个招呼，然后结合现有讨论补上一条你最想推进的观点。`
+        ? `你刚加入一个围绕《${doc.title}》的教研讨论群。请先自然打个招呼，然后结合现有讨论补上一条你最想推进的观点。`
         : `你刚加入一个讨论群，主题是“${room?.topic || '自由讨论'}”。请先自然打个招呼，再补上你的观点。`
 
       const reply = await getAgentReply(
@@ -1807,8 +1854,59 @@ export default function ChatRoomPage() {
             isActive={room.status === 'active' && !loading}
           />
 
+          {participants.length > 0 ? (
+            <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-100 px-6 py-2.5">
+              <span className="shrink-0 text-xs font-medium text-gray-500">消息筛选</span>
+              <button
+                onClick={() => setFilteredAgentId(null)}
+                aria-pressed={!validFilteredAgentId}
+                className={cn(
+                  'h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors',
+                  !validFilteredAgentId
+                    ? 'border-primary-200 bg-primary-50 text-primary-700'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                )}
+              >
+                全部
+              </button>
+              {participants.map((participant) => {
+                const active = validFilteredAgentId === participant.id
+                return (
+                  <button
+                    key={participant.id}
+                    onClick={() => setFilteredAgentId((current) => current === participant.id ? null : participant.id)}
+                    aria-pressed={active}
+                    aria-label={`筛选 ${participant.name}`}
+                    title={`筛选 ${participant.name}`}
+                    className={cn(
+                      'flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                      active
+                        ? 'border-primary-200 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    )}
+                  >
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[11px]"
+                      style={{ backgroundColor: `${AGENT_COLORS[participant.color]}18`, color: AGENT_COLORS[participant.color] }}
+                    >
+                      {participant.avatar || participant.name[0]}
+                    </span>
+                    <span className="max-w-24 truncate">{participant.name}</span>
+                  </button>
+                )
+              })}
+              {activeFilterAgent ? (
+                <span className="shrink-0 text-xs text-gray-400">仅显示 {activeFilterAgent.name} 的发言</span>
+              ) : null}
+            </div>
+          ) : null}
+
           <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto bg-gradient-to-b from-white to-gray-50/60 px-6 py-5">
-            {messages.map((message) => {
+            {visibleMessages.length === 0 ? (
+              <div className="mx-auto mt-10 max-w-sm rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
+                当前筛选下暂无消息
+              </div>
+            ) : visibleMessages.map((message) => {
               const replyQuote = message.replyToMessage ? (
                 <div className="mb-1.5 rounded-md border-l-2 border-gray-300 bg-gray-100 px-3 py-1.5 text-xs dark:border-gray-500 dark:bg-gray-700/50">
                   <span className="font-medium text-gray-600 dark:text-gray-300">{message.replyToMessage.senderName}</span>
@@ -1880,12 +1978,10 @@ export default function ChatRoomPage() {
                         {new Date(message.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <button
-                        onClick={() => {
-                          setReplyTo(message)
-                          inputRef.current?.focus()
-                        }}
+                        onClick={() => handleFollowUp(message)}
                         className="ml-1 border-0 bg-transparent p-0 text-gray-400 opacity-0 transition-opacity hover:text-primary-500 group-hover:opacity-100 cursor-pointer"
-                        title="引用回复"
+                        title={`追问 ${message.sender_name}`}
+                        aria-label={`追问 ${message.sender_name}`}
                       >
                         <Reply className="h-3.5 w-3.5" />
                       </button>
@@ -2031,6 +2127,8 @@ export default function ChatRoomPage() {
                       toast('success', '已收藏最近一条消息')
                     }
                   }}
+                  suggestions={reviewSuggestions}
+                  onSuggestionQuote={handleQuoteSuggestion}
                   onControl={handleControlAction}
                   disabled={loading}
                 />

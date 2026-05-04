@@ -1,5 +1,6 @@
-import { FileText, MessageSquareQuote, BookmarkPlus, Sparkles, MoreHorizontal } from 'lucide-react'
+import { FileText, MessageSquareQuote, BookmarkPlus, Sparkles, MoreHorizontal, Lightbulb } from 'lucide-react'
 import type { ChatControlActionId } from '@/services/chatEngine'
+import type { Suggestion } from '@/types'
 
 interface Props {
   onQuote: () => void
@@ -7,11 +8,24 @@ interface Props {
   onVote: () => void
   onSummary: () => void
   onBookmark: () => void
+  suggestions?: Suggestion[]
+  onSuggestionQuote?: (suggestion: Suggestion) => void
   onControl?: (actionId: ChatControlActionId) => void
   disabled?: boolean
 }
 
-export function ChatToolbar({ onQuote, onDoc, onVote, onSummary, onBookmark, onControl, disabled }: Props) {
+export function ChatToolbar({
+  onQuote,
+  onDoc,
+  onVote,
+  onSummary,
+  onBookmark,
+  suggestions = [],
+  onSuggestionQuote,
+  onControl,
+  disabled,
+}: Props) {
+  const hasSuggestions = suggestions.length > 0 && Boolean(onSuggestionQuote)
   const primaryButtons = [
     { icon: <MessageSquareQuote className="h-3.5 w-3.5" />, label: '引用上一条', onClick: onQuote },
     { icon: <FileText className="h-3.5 w-3.5" />, label: '附加文档', onClick: onDoc },
@@ -49,6 +63,40 @@ export function ChatToolbar({ onQuote, onDoc, onVote, onSummary, onBookmark, onC
             <span className="hidden sm:inline">{btn.label}</span>
           </button>
         ))}
+        {hasSuggestions ? (
+          <details className="group/suggestions relative">
+            <summary
+              title="引用建议"
+              onClick={(event) => {
+                if (disabled) event.preventDefault()
+              }}
+              className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 group-open/suggestions:border-primary-200 group-open/suggestions:bg-primary-50 group-open/suggestions:text-primary-700"
+            >
+              <Lightbulb className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">引用建议</span>
+            </summary>
+            <div className="absolute bottom-full left-0 z-30 mb-2 w-80 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+              <div className="px-2 py-1 text-[11px] font-medium text-gray-400">选择评审建议</div>
+              {suggestions.slice(0, 6).map((suggestion) => {
+                const label = suggestion.title || suggestion.content
+                return (
+                  <button
+                    key={suggestion.id || `${suggestion.source_agent}-${suggestion.content}`}
+                    onClick={(event) => {
+                      event.currentTarget.closest('details')?.removeAttribute('open')
+                      onSuggestionQuote?.(suggestion)
+                    }}
+                    disabled={disabled}
+                    className="flex w-full flex-col gap-0.5 rounded-lg border-0 bg-transparent px-3 py-2 text-left transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <span className="line-clamp-1 text-xs font-medium text-gray-700">{label}</span>
+                    <span className="line-clamp-2 text-[11px] leading-5 text-gray-500">{suggestion.content}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </details>
+        ) : null}
       </div>
 
       <details className="group relative">

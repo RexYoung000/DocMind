@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, Sparkles, Check, Dices } from 'lucide-react'
+import { ArrowLeft, Loader2, Send, Sparkles, Check, Dices, Undo2, Wand2 } from 'lucide-react'
 import { AGENT_COLORS, useAgentStore } from '@/stores/agentStore'
 import { useAuthStore } from '@/stores/authStore'
-import { chatCompletion, LLMError } from '@/services/llmService'
+import { chatCompletion, LLMError, optimizePrompt, continuePrompt } from '@/services/llmService'
 import { isModelConfigValid } from '@/stores/settingsStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/components/ui/Toast'
 import { createId } from '@/utils/id'
 import type { Agent, AgentColor, AgentCategory } from '@/types'
+import { cn } from '@/lib/utils'
 
 const ALL_COLORS: AgentColor[] = ['indigo', 'violet', 'pink', 'orange', 'teal', 'sky', 'slate', 'green', 'rose', 'amber', 'emerald', 'cyan']
 
@@ -17,31 +18,31 @@ interface ChatMsg {
   content: string
 }
 
-const GUIDED_CREATION_PROMPT = `你是文档评审平台的角色创建助手。你的目标是通过**分步引导**帮用户创建一个专业的文档评审角色。
+const GUIDED_CREATION_PROMPT = `你是教研评审平台的角色创建助手。你的目标是通过**分步引导**帮教研老师创建一个教研案评审角色。
 
 ## 对话流程（严格按顺序进行，每次只问一个问题）
 
 ### 第1步：确认角色类型
 首先问用户想创建什么类型的角色：
-A. 📊 分析师视角 — 逻辑与结构分析，关注论证质量和内容深度
-B. ⚙️ 工程师视角 — 技术与可行性评估，关注实现方案和系统思维
-C. 🎨 创意者视角 — 创意与表达评估，关注呈现方式和用户体验
+A. 👨‍🏫 教研老师视角 — 专业的教学设计审视
+B. 🎒 学生视角 — 模拟学生的学习感受
+C. 👨‍👩‍👧 家长视角 — 家长对教学的关注点
 D. 🎭 自定义视角 — 完全自由设计
 
 ### 第2步：细化角色定位
 根据用户选择的类型，进一步细化：
 
-如果是分析师：
-- 主要关注哪个维度？逻辑结构 / 内容深度 / 表达清晰 / 论据充分 / 创新性 / 实用性
+如果是教研老师：
+- 主要关注哪个维度？课程设计 / 知识链 / 教学目标 / 课程重点 / 课程难点 / 学习梯度
 - 还是综合型，不侧重特定维度？
 
-如果是工程师：
-- 什么专业背景？技术 / 产品 / 项目
-- 评估风格？严谨务实 / 用户导向 / 高效交付
+如果是学生：
+- 什么年龄段？小学 / 初中 / 高中
+- 什么学习特点？活泼好动 / 安静内向 / 学霸型 / 努力追赶型
 
-如果是创意者：
-- 什么创意领域？视觉设计 / 用户体验 / 文案表达
-- 评估风格？创意驱动 / 用户关怀 / 精雕细琢
+如果是家长：
+- 什么教育理念？重视成绩 / 关注素质 / 比较放手 / 其他
+- 对教育参与度？深度参与 / 一般关注 / 基本信任学校
 
 ### 第3步：确认性格和说话风格
 问用户希望这个角色的性格偏好：
@@ -52,12 +53,13 @@ D. 幽默亲和型 — 轻松表达，善用比喻
 E. 让用户自由描述
 
 ### 第4步：关注重点
-问用户希望这个角色在评审文档时特别关注什么？
-比如：逻辑严谨度 / 数据支撑 / 语言表达 / 创新点挖掘 / 实用价值 / 其他
+问用户希望这个角色在评审教研案时特别关注什么？
+比如：教学目标的清晰度 / 知识点的衔接 / 课堂活动设计 / 练习题设计 / 分层教学 / 学生参与度 / 作业设计 / 其他
 
-### 第5步：专业背景
-问用户想给这个角色什么样的专业背景？
-比如：从业年限 / 行业领域 / 过往经验 / 擅长方向等
+### 第5步：教学经验和背景
+问用户想给这个角色什么样的教学背景？
+比如：教龄 / 学校类型 / 是否有班主任经验 / 特殊教育经历等
+（如果是学生/家长角色，跳过此步，直接到第6步）
 
 ### 第6步：生成角色
 收集完信息后，告诉用户"正在为你生成角色..."，然后输出 JSON。
@@ -70,8 +72,8 @@ E. 让用户自由描述
   "avatar": "一个代表此角色的 emoji",
   "tagline": "一句话角色标签",
   "color": "从 indigo/violet/pink/orange/teal/sky/slate/green/rose/amber/emerald/cyan 中选一个",
-  "category": "analyst 或 engineer 或 creative",
-  "focusDimension": "逻辑结构/内容深度/表达清晰/论据充分/创新性/实用性 中的一个",
+  "category": "teacher 或 student 或 parent",
+  "focusDimension": "课程设计/知识链/教学目标/课程重点/课程难点/学习梯度 中的一个（仅教研老师需要）",
   "personality": {
     "directness": 3,
     "strictness": 4,
@@ -83,7 +85,7 @@ E. 让用户自由描述
     "style": "说话风格描述",
     "catchphrase": "口头禅（有性格特色）"
   },
-  "system_prompt": "完整的系统提示词，包含角色身份、说话方式、专业背景、评审原则。"
+  "system_prompt": "完整的人物设定，包含角色身份、说话方式、专业背景、评审原则。要明确不评价课件交互逻辑和功能设计，专注于教研内容。"
 }
 \`\`\`
 
@@ -92,11 +94,12 @@ E. 让用户自由描述
 - 用轻松友好的语气，像和同事聊天
 - 给出的选项要用 A/B/C/D 标记，方便选择
 - 如果用户说"随机"或"帮我选"，你就随机组合一个
-- 在最后一步之前，不要输出任何 JSON`
+- 在最后一步之前，不要输出任何 JSON
+- 角色必须聚焦教研案评审，不评价课件交互和功能设计`
 
-const RANDOM_AGENT_PROMPT = `你是评审平台的角色创建助手。请随机生成一个有特色的文档评审角色。
+const RANDOM_AGENT_PROMPT = `你是教研评审平台的角色创建助手。请随机生成一个有特色的教研案评审角色。
 
-随机选择一种角色类型（analyst/engineer/creative），随机组合性格、说话风格、关注维度，生成一个独特的评审角色。
+随机选择一种角色类型（教研老师/学生/家长），随机组合性格、说话风格、关注维度，生成一个独特的教育领域评审角色。
 
 请严格按以下 JSON 格式输出（仅输出 JSON，不要其他内容）：
 {
@@ -104,18 +107,26 @@ const RANDOM_AGENT_PROMPT = `你是评审平台的角色创建助手。请随机
   "avatar": "一个代表此角色的 emoji",
   "tagline": "一句话角色标签",
   "color": "从 indigo/violet/pink/orange/teal/sky/slate/green/rose/amber/emerald/cyan 中随机选一个",
-  "category": "analyst 或 engineer 或 creative",
-  "focusDimension": "逻辑结构/内容深度/表达清晰/论据充分/创新性/实用性 中的一个",
-  "personality": { "directness": 随机1-5, "strictness": 随机1-5, "humor": 随机1-5, "empathy": 随机1-5 },
+  "category": "teacher 或 student 或 parent",
+  "focusDimension": "课程设计/知识链/教学目标/课程重点/课程难点/学习梯度 中的一个（仅 teacher 需要，其他留空字符串）",
+  "personality": {
+    "directness": 随机1-5,
+    "strictness": 随机1-5,
+    "humor": 随机1-5,
+    "empathy": 随机1-5
+  },
   "expertise": ["专长1", "专长2", "专长3"],
-  "behavior": { "style": "说话风格描述", "catchphrase": "有个性的口头禅" },
-  "system_prompt": "完整的系统提示词，包含角色身份、说话方式和评审原则。"
+  "behavior": {
+    "style": "说话风格描述",
+    "catchphrase": "有个性的口头禅"
+  },
+  "system_prompt": "完整的人物设定，包含教育角色身份、说话方式和评审原则。明确不评价课件交互逻辑。"
 }`
 
 const INITIAL_MESSAGES: ChatMsg[] = [
   {
     role: 'ai',
-    content: '你好！让我们一起创建一个评审角色吧 🎭\n\n首先，你想创建什么类型的角色？\n\nA. 📊 分析师视角 — 逻辑与结构分析，关注论证质量和内容深度\nB. ⚙️ 工程师视角 — 技术与可行性评估，关注实现方案和系统思维\nC. 🎨 创意者视角 — 创意与表达评估，关注呈现方式和用户体验\nD. 🎭 自定义视角 — 完全自由设计\n\n输入字母选择，或直接告诉我你想要的角色！',
+    content: '你好！让我们一起创建一个教研评审角色吧 🎭\n\n首先，你想创建什么类型的角色？\n\nA. 👨‍🏫 教研老师视角 — 专业的教学设计审视\nB. 🎒 学生视角 — 模拟学生的学习感受\nC. 👨‍👩‍👧 家长视角 — 家长对教学的关注点\nD. 🎭 自定义视角 — 完全自由设计\n\n输入字母选择，或直接告诉我你想要的角色！',
   },
 ]
 
@@ -148,10 +159,47 @@ export default function AgentCreatePage() {
     expertise: string[]; behavior: { style: string; catchphrase: string }; system_prompt: string
   } | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const [aiLoading, setAiLoading] = useState<'optimize' | 'continue' | null>(null)
+  const [undoSystemPrompt, setUndoSystemPrompt] = useState<string | null>(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  const handleOptimizePreview = async () => {
+    if (!preview?.system_prompt?.trim()) return
+    setUndoSystemPrompt(preview.system_prompt)
+    setAiLoading('optimize')
+    try {
+      const result = await optimizePrompt(preview.system_prompt, {
+        onChunk: () => {},
+        onDone: (text) => setPreview((p) => p ? { ...p, system_prompt: text } : p),
+        onError: (err) => toast('error', `AI优化失败: ${err.message}`),
+      })
+      if (result) setPreview((p) => p ? { ...p, system_prompt: result } : p)
+    } catch { /* handled by onError */ } finally { setAiLoading(null) }
+  }
+
+  const handleContinuePreview = async () => {
+    if (!preview?.system_prompt?.trim()) return
+    setUndoSystemPrompt(preview.system_prompt)
+    setAiLoading('continue')
+    try {
+      const result = await continuePrompt(preview.system_prompt, {
+        onChunk: () => {},
+        onDone: () => {},
+        onError: (err) => toast('error', `AI续写失败: ${err.message}`),
+      })
+      if (result) setPreview((p) => p ? { ...p, system_prompt: p.system_prompt + '\n\n' + result } : p)
+    } catch { /* handled by onError */ } finally { setAiLoading(null) }
+  }
+
+  const handleUndoPreview = () => {
+    if (undoSystemPrompt !== null && preview) {
+      setPreview({ ...preview, system_prompt: undoSystemPrompt })
+      setUndoSystemPrompt(null)
+    }
+  }
 
   const processLLMResponse = (text: string) => {
     const parsed = parseAgentJSON(text)
@@ -162,7 +210,7 @@ export default function AgentCreatePage() {
         avatar: parsed.avatar || '🤖',
         tagline: parsed.tagline || '',
         color: validColor as AgentColor,
-        category: (['analyst', 'engineer', 'creative'].includes(parsed.category) ? parsed.category : 'analyst') as AgentCategory,
+        category: (['teacher', 'student', 'parent'].includes(parsed.category) ? parsed.category : 'teacher') as AgentCategory,
         focusDimension: parsed.focusDimension || undefined,
         personality: {
           directness: Math.min(5, Math.max(1, parsed.personality?.directness || 3)),
@@ -236,7 +284,7 @@ export default function AgentCreatePage() {
 
     try {
       await chatCompletion(
-        [{ role: 'system', content: RANDOM_AGENT_PROMPT }, { role: 'user', content: '请随机生成一个独特有趣的评审角色' }],
+        [{ role: 'system', content: RANDOM_AGENT_PROMPT }, { role: 'user', content: '请随机生成一个独特有趣的教研评审角色' }],
         {
           onChunk: () => {},
           onDone: (text) => processLLMResponse(text),
@@ -278,20 +326,20 @@ export default function AgentCreatePage() {
     navigate('/agents')
   }
 
-  const categoryLabels: Record<string, string> = { analyst: '分析师', engineer: '工程师', creative: '创意者', teacher: '教学者', student: '学习者', parent: '关注者' }
+  const categoryLabels: Record<string, string> = { teacher: '教研老师', student: '学生', parent: '家长' }
 
   return (
     <div className="space-y-6 animate-slide-up">
       <Link to="/agents" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
-        <ArrowLeft className="h-4 w-4" /> 返回评审团
+        <ArrowLeft className="h-4 w-4" /> 返回教研评审团
       </Link>
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">创建评审角色</h1>
+          <h1 className="text-2xl font-bold text-gray-900">创建教研评审角色</h1>
           <p className="text-sm text-gray-500 mt-1">
             {hasValidConfig
-              ? '通过对话引导创建分析师、工程师或创意者视角的评审角色'
+              ? '通过对话引导创建教研老师、学生或家长视角的评审角色'
               : '请先到设置页面配置 API Key，然后回来创建角色'}
           </p>
         </div>
@@ -310,7 +358,7 @@ export default function AgentCreatePage() {
         <div className="lg:col-span-3 rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col" style={{ height: '600px' }}>
           <div className="border-b border-gray-100 px-5 py-3">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-primary-500" /> AI 引导创建
+              <Sparkles className="h-4 w-4 text-primary-500" /> 教育专属引导
             </h3>
           </div>
 
@@ -417,6 +465,39 @@ export default function AgentCreatePage() {
                       </span>
                     ))}
                   </div>
+
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-500">人物设定</span>
+                      <div className="flex items-center gap-1">
+                        {undoSystemPrompt !== null && (
+                          <button onClick={handleUndoPreview} className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] text-gray-400 hover:bg-gray-100 cursor-pointer border-0 bg-transparent" title="撤销">
+                            <Undo2 className="h-2.5 w-2.5" /> 撤销
+                          </button>
+                        )}
+                        <button
+                          onClick={handleOptimizePreview}
+                          disabled={!preview.system_prompt?.trim() || aiLoading !== null}
+                          className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {aiLoading === 'optimize' ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Wand2 className="h-2.5 w-2.5" />}
+                          AI优化
+                        </button>
+                        <button
+                          onClick={handleContinuePreview}
+                          disabled={!preview.system_prompt?.trim() || aiLoading !== null}
+                          className="flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {aiLoading === 'continue' ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Sparkles className="h-2.5 w-2.5" />}
+                          AI续写
+                        </button>
+                      </div>
+                    </div>
+                    <p className={cn('text-xs text-gray-600 leading-relaxed', !preview.system_prompt?.trim() && 'text-gray-400 italic')}>
+                      {preview.system_prompt?.trim() || '可以尝试给角色增加一些人物设定哦'}
+                    </p>
+                  </div>
+
                   {preview.behavior.catchphrase && (
                     <p className="text-xs text-gray-400 italic">"{preview.behavior.catchphrase}"</p>
                   )}

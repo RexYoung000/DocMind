@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ClipboardCheck, Clock3, FileText, Plus, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -23,6 +23,31 @@ export default function ReviewListPage() {
   const filteredReviews = reviews.filter((review) => (activeTab === 'all' ? true : review.status === activeTab))
   const completedCount = reviews.filter((review) => review.status === 'completed').length
   const runningCount = reviews.filter((review) => review.status === 'in_progress').length
+  const groupedReviews = useMemo(() => {
+    const groups = new Map<string, { documentTitle: string; reviews: typeof filteredReviews }>()
+
+    filteredReviews.forEach((review) => {
+      const key = review.document_id
+      const current = groups.get(key)
+      if (current) {
+        current.reviews.push(review)
+        return
+      }
+
+      groups.set(key, {
+        documentTitle: review.document?.title || '未命名文档',
+        reviews: [review],
+      })
+    })
+
+    return Array.from(groups.entries())
+      .map(([documentId, group]) => ({
+        documentId,
+        documentTitle: group.documentTitle,
+        reviews: group.reviews.sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()),
+      }))
+      .sort((left, right) => new Date(right.reviews[0]?.created_at || 0).getTime() - new Date(left.reviews[0]?.created_at || 0).getTime())
+  }, [filteredReviews])
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -50,7 +75,7 @@ export default function ReviewListPage() {
         <div className="dm-hero-card rounded-[28px] px-6 py-6">
           <div className="relative z-[1]">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary-600">Review Snapshot</p>
-            <h2 className="mt-2 text-2xl font-bold text-gray-900">把最近的评审结果整理成可继续行动的计划。</h2>
+            <h2 className="mt-2 text-2xl font-bold text-gray-900">把最近的教研判断整理成可继续行动的结果。</h2>
             <p className="mt-3 max-w-xl text-sm leading-7 text-gray-600">
               完成态报告适合看诊断和建议，进行中报告适合观察模型输出是否稳定。所有后续聊天室都应该从这里出发，而不是脱离评审结果空聊。
             </p>
@@ -118,10 +143,20 @@ export default function ReviewListPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredReviews.map((review) => (
+              {groupedReviews.map((group) => (
+                <section key={group.documentId} className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">{group.documentTitle}</h3>
+                      <p className="mt-1 text-xs text-gray-500">共 {group.reviews.length} 份评审记录，按时间倒序排列。</p>
+                    </div>
+                    <Badge variant="default">{group.reviews.length} 份评审</Badge>
+                  </div>
+                  <div className="space-y-3">
+              {group.reviews.map((review) => (
                 <Link
                   key={review.id}
-                  to={`/reviews/${review.id}`}
+                  to={review.compareReport ? `/reviews/compare/${review.id}` : `/reviews/${review.id}`}
                   className="block no-underline"
                 >
                   <div className="dm-panel dm-panel-hover rounded-[28px] p-5">
@@ -211,6 +246,9 @@ export default function ReviewListPage() {
                     </div>
                   </div>
                 </Link>
+              ))}
+                  </div>
+                </section>
               ))}
             </div>
           )}

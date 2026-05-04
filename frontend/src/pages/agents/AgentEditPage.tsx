@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Bot, Save, History, X } from 'lucide-react'
+import { ArrowLeft, Bot, History, Loader2, Save, Sparkles, Undo2, Wand2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAgentStore, AGENT_COLORS } from '@/stores/agentStore'
+import { optimizePrompt, continuePrompt } from '@/services/llmService'
 import { toast } from '@/components/ui/Toast'
 import type { AgentColor } from '@/types'
 
 const COLOR_OPTIONS: AgentColor[] = ['indigo', 'violet', 'pink', 'orange', 'teal', 'sky', 'slate', 'green', 'rose', 'amber', 'emerald', 'cyan']
 
-const CATEGORY_LABELS: Record<string, string> = { analyst: '分析师', engineer: '工程师', creative: '创意者', teacher: '教学者', student: '学习者', parent: '关注者' }
+const CATEGORY_LABELS: Record<string, string> = { teacher: '教研老师', student: '学生', parent: '家长' }
 
 export default function AgentEditPage() {
   const { id } = useParams<{ id: string }>()
@@ -27,18 +28,63 @@ export default function AgentEditPage() {
   const [humor, setHumor] = useState(agent?.personality.humor || 3)
   const [empathy, setEmpathy] = useState(agent?.personality.empathy || 3)
   const [showHistory, setShowHistory] = useState(false)
+  const [aiLoading, setAiLoading] = useState<'optimize' | 'continue' | null>(null)
+  const [undoText, setUndoText] = useState<string | null>(null)
+
+  const handleOptimize = async () => {
+    if (!systemPrompt.trim()) return
+    setUndoText(systemPrompt)
+    setAiLoading('optimize')
+    try {
+      const result = await optimizePrompt(systemPrompt, {
+        onChunk: () => {},
+        onDone: (text) => setSystemPrompt(text),
+        onError: (err) => toast('error', `AI优化失败: ${err.message}`),
+      })
+      if (result) setSystemPrompt(result)
+    } catch {
+      // error handled by onError
+    } finally {
+      setAiLoading(null)
+    }
+  }
+
+  const handleContinue = async () => {
+    if (!systemPrompt.trim()) return
+    setUndoText(systemPrompt)
+    setAiLoading('continue')
+    try {
+      const result = await continuePrompt(systemPrompt, {
+        onChunk: () => {},
+        onDone: () => {},
+        onError: (err) => toast('error', `AI续写失败: ${err.message}`),
+      })
+      if (result) setSystemPrompt((prev) => prev + '\n\n' + result)
+    } catch {
+      // error handled by onError
+    } finally {
+      setAiLoading(null)
+    }
+  }
+
+  const handleUndo = () => {
+    if (undoText !== null) {
+      setSystemPrompt(undoText)
+      setUndoText(null)
+    }
+  }
 
   if (!agent) {
     return (
       <div className="space-y-6 animate-slide-up">
         <Link to="/agents" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
-          <ArrowLeft className="h-4 w-4" /> 返回评审团
+          <ArrowLeft className="h-4 w-4" /> 返回教研评审团
         </Link>
         <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
           <Bot className="mx-auto h-12 w-12 text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium">角色不存在或已被删除</p>
           <Link to="/agents" className="mt-4 inline-block rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 no-underline">
-            返回评审团
+            返回教研评审团
           </Link>
         </div>
       </div>
@@ -66,7 +112,7 @@ export default function AgentEditPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-slide-up">
       <Link to="/agents" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 no-underline">
-        <ArrowLeft className="h-4 w-4" /> 返回评审团
+        <ArrowLeft className="h-4 w-4" /> 返回教研评审团
       </Link>
 
       <div className="flex items-center justify-between">
@@ -159,12 +205,51 @@ export default function AgentEditPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">系统提示词</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-gray-700">人物设定</label>
+                <div className="flex items-center gap-1">
+                  {undoText !== null && (
+                    <button
+                      onClick={handleUndo}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 cursor-pointer border-0 bg-transparent"
+                      title="撤销AI修改"
+                    >
+                      <Undo2 className="h-3 w-3" /> 撤销
+                    </button>
+                  )}
+                  <button
+                    onClick={handleOptimize}
+                    disabled={!systemPrompt.trim() || aiLoading !== null}
+                    className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="AI优化润色人物设定"
+                  >
+                    {aiLoading === 'optimize' ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-3 w-3" />
+                    )}
+                    AI优化
+                  </button>
+                  <button
+                    onClick={handleContinue}
+                    disabled={!systemPrompt.trim() || aiLoading !== null}
+                    className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="AI续写扩展人物设定"
+                  >
+                    {aiLoading === 'continue' ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3" />
+                    )}
+                    AI续写
+                  </button>
+                </div>
+              </div>
               <textarea
-                value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)}
+                value={systemPrompt} onChange={(e) => { setSystemPrompt(e.target.value); setUndoText(null) }}
                 rows={6}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm outline-none transition-all focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 resize-y"
-                placeholder="角色的系统提示词..."
+                placeholder={systemPrompt.trim() ? '' : '可以尝试给角色增加一些人物设定哦'}
               />
             </div>
           </div>

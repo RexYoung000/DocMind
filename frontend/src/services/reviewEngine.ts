@@ -1,5 +1,5 @@
-import type { Agent, AgentColor, Document, AgentReview, Suggestion, ReviewSummary } from '@/types'
-import { REVIEW_DIMENSIONS } from '@/types'
+import type { Agent, AgentColor, CompareReviewReport, DiffPointReview, DiffResult, Document, AgentReview, Suggestion, ReviewSummary } from '@/types'
+import { TEACHING_DIMENSIONS } from '@/types'
 import { chatCompletion } from './llmService'
 import { createId } from '@/utils/id'
 
@@ -9,14 +9,16 @@ const MAX_TOP_SUGGESTIONS = 10
 
 const REVIEW_SYSTEM_PROMPT = (agent: Agent) => `${agent.system_prompt}
 
-你现在正在执行一份文档深度评审任务，必须严格站在「${agent.name}」的身份与视角说话。
+你必须使用简体中文回复。
+
+你现在正在执行一份教研案深度评审任务，必须严格站在「${agent.name}」的身份与视角说话。
 
 评审要求：
-1. 不要只复述文件内容，要判断内容背后的逻辑和因果链条。
+1. 不要只复述文件内容，要判断教学设计背后的因果链条，例如“目标过高为什么会导致难点无法落地”“活动设计为什么会削弱学生理解”。
 2. 亮点和问题都要落在具体文本上。引用原文时使用（原文：“……”）格式。
 3. 优化建议必须是可执行建议，不要空话。每条建议都要包含：问题定位 -> 改进动作 -> 预期收益。
 4. 建议数量默认 3-8 条；如果文档明显优秀，也至少保留 2-3 条高价值建议。
-5. 评论要有延伸，说明它会如何影响整体质量、读者理解或实际应用。
+5. 评论要有延伸，说明它会如何影响课堂节奏、学生理解、教学评价或迁移应用。
 6. 维度评论不能只有一句话，每个维度都要给出具体发现和原因。
 
 只输出 JSON，不要输出 Markdown，不要输出解释，不要输出代码块。
@@ -26,12 +28,12 @@ const REVIEW_SYSTEM_PROMPT = (agent: Agent) => `${agent.system_prompt}
   "opinion": "整体评价，需要包含：总体判断、最大亮点、核心痛点、最优先动作。",
   "highlights": ["亮点 1", "亮点 2"],
   "dimensions": [
-    { "name": "逻辑结构", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
-    { "name": "内容深度", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
-    { "name": "表达清晰", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
-    { "name": "论据充分", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
-    { "name": "创新性", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
-    { "name": "实用性", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" }
+    { "name": "课程设计", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "知识链", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "教学目标", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "课程重点", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "课程难点", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" },
+    { "name": "学习梯度", "score": 4.0, "comment": "2-3 句深度评论", "evidence": "必要时引用原文" }
   ],
   "suggestions": [
     {
@@ -177,7 +179,7 @@ function normalizeDimensions(dimensions: ParsedReviewPayload['dimensions']) {
       : []
   )
 
-  return REVIEW_DIMENSIONS.map((dimensionName) => {
+  return TEACHING_DIMENSIONS.map((dimensionName) => {
     const found = dimensionMap.get(dimensionName)
     return {
       name: dimensionName,
@@ -188,28 +190,44 @@ function normalizeDimensions(dimensions: ParsedReviewPayload['dimensions']) {
   })
 }
 
-function buildDocumentContext(doc: Document) {
-  const fields: string[] = []
-
-  if (doc.summary) {
-    fields.push(`文档摘要：${doc.summary}`)
+function buildTeachingContext(doc: Document) {
+  if (!doc.teaching_plan) {
+    return ''
   }
 
-  if (doc.keywords?.length) {
-    fields.push(`关键词：${doc.keywords.join('、')}`)
+  const teachingPlan = doc.teaching_plan
+  const sections = [
+    `学科：${teachingPlan.subject || '未识别'}`,
+    `年级：${teachingPlan.grade || '未识别'}`,
+    `课题：${teachingPlan.topic || '未识别'}`,
+    `课时：${teachingPlan.duration || '未识别'}`,
+  ]
+
+  if (teachingPlan.objectives) {
+    sections.push(
+      `教学目标：`,
+      `- 知识与技能：${teachingPlan.objectives.knowledge || '未明确'}`,
+      `- 过程与方法：${teachingPlan.objectives.process || '未明确'}`,
+      `- 情感态度价值观：${teachingPlan.objectives.emotion || '未明确'}`
+    )
   }
 
-  if (doc.structured_content?.sections) {
-    const sections = doc.structured_content.sections as { title?: string; content?: string }[]
-    if (sections.length > 0) {
-      fields.push(
-        '文档章节：',
-        ...sections.slice(0, 6).map((section, index) => `${index + 1}. ${section.title || '未命名章节'}：${(section.content || '').slice(0, 200)}`)
-      )
-    }
+  if (teachingPlan.keyPoints?.length) {
+    sections.push(`教学重点：${teachingPlan.keyPoints.join('；')}`)
   }
 
-  return fields.length > 0 ? `\n\n【文档结构化信息】\n${fields.join('\n')}` : ''
+  if (teachingPlan.difficulties?.length) {
+    sections.push(`教学难点：${teachingPlan.difficulties.join('；')}`)
+  }
+
+  if (teachingPlan.teachingProcess?.length) {
+    sections.push(
+      '教学过程：',
+      ...teachingPlan.teachingProcess.slice(0, 5).map((item) => `- ${item.stage}：${item.content}`)
+    )
+  }
+
+  return `\n\n【结构化教学信息】\n${sections.join('\n')}`
 }
 
 function buildStructuredSections(doc: Document) {
@@ -291,7 +309,7 @@ export function createFailedAgentReview(agent: Agent, errorMessage: string): Age
     opinion: '该角色本次分析未能成功生成，请根据错误信息重试。',
     status: 'failed',
     error_message: errorMessage,
-    dimensions: REVIEW_DIMENSIONS.map((name) => ({ name, score: 0 })),
+    dimensions: TEACHING_DIMENSIONS.map((name) => ({ name, score: 0 })),
     suggestions: [],
   }
 }
@@ -304,7 +322,7 @@ export async function executeAgentReview(
 ): Promise<AgentReview> {
   const docContent = doc.raw_content || '(文档内容为空)'
   const truncatedContent = docContent.slice(0, MAX_DOC_CONTENT)
-  const docContext = buildDocumentContext(doc)
+  const teachingContext = buildTeachingContext(doc)
   const structuredSections = buildStructuredSections(doc)
 
   const rawText = await collectCompletionText(
@@ -312,9 +330,9 @@ export async function executeAgentReview(
       { role: 'system', content: REVIEW_SYSTEM_PROMPT(agent) },
       {
         role: 'user',
-        content: `请评审以下文档。
+        content: `请评审以下教研案。
 
-标题：${doc.title}${docContext}${structuredSections}
+标题：${doc.title}${teachingContext}${structuredSections}
 
 【完整内容】
 ${truncatedContent}`,
@@ -341,7 +359,7 @@ ${truncatedContent}`,
       score: 3.5,
       opinion: buildFallbackOpinion(rawText),
       status: 'completed',
-      dimensions: REVIEW_DIMENSIONS.map((name) => ({ name, score: 3.5 })),
+      dimensions: TEACHING_DIMENSIONS.map((name) => ({ name, score: 3.5 })),
       suggestions: [],
     }
   }
@@ -394,9 +412,9 @@ function buildFallbackSummary(completedReviews: AgentReview[]): ReviewSummary {
 
   return {
     overview: completedReviews.length
-      ? `已完成 ${completedReviews.length} 份评审，整体判断已汇总。`
+      ? `已完成 ${completedReviews.length} 份评审，整体判断集中在“可用但仍有关键教学落点需要加深”。`
       : '暂无有效评审结果。',
-    strengths: highlights.length ? highlights : ['文档具备基本可评审内容。'],
+    strengths: highlights.length ? highlights : ['文档至少具备了基础教学要素，便于继续迭代。'],
     pain_points: risks,
     consensus: completedReviews.length === 1 ? [completedReviews[0].opinion.slice(0, 120)] : [],
     controversies: [],
@@ -448,11 +466,11 @@ ${suggestionSummary || '- 暂无'}`
     })
     .join('\n\n')
 
-  const summaryPrompt = `以下是多位角色对同一份文档的评审结果：
+  const summaryPrompt = `以下是多位角色对同一份教研案的评审结果：
 
 ${agentSummaries}
 
-请输出一个清晰的汇总 JSON，只输出 JSON：
+请输出一个更适合教师阅读与落地执行的汇总 JSON，只输出 JSON：
 {
   "overview": "2-3 句整体诊断，要指出最核心的教学痛点与改进方向",
   "strengths": ["2-4 条真正成立的亮点"],
@@ -472,7 +490,7 @@ ${agentSummaries}
       "content": "问题定位 -> 改进动作 -> 预期收益",
       "priority": "high",
       "evidence": "关键证据，可空",
-      "expected_effect": "实施后的预期收益",
+      "expected_effect": "实施后的教学收益",
       "source_agent": "若为跨角色共识可写 评审汇总"
     }
   ]
@@ -480,8 +498,8 @@ ${agentSummaries}
 
 要求：
 1. top_suggestions 数量控制在 3-10 条，默认越少越精，不要堆砌重复建议。
-2. 不要停留在”表面现象”，要说明这些问题为什么会影响文档质量。
-3. 优先保留真正能落地、能提升内容质量的建议。
+2. 不要停留在“表面现象”，要说明这些问题为什么会影响课堂质量。
+3. 优先保留真正能落地、能提升课堂效果的建议。
 4. 如果多位角色提到同一痛点，请合并成更高质量的一条。`
 
   try {
@@ -489,7 +507,7 @@ ${agentSummaries}
       [
         {
           role: 'system',
-          content: '你是一个擅长评审报告整合的高级分析助手，负责把多角色意见压缩成更深、更准、更可执行的结论。只输出 JSON。',
+          content: '你是一个擅长教研报告整合的高级分析助手，负责把多角色意见压缩成更深、更准、更可执行的结论。只输出 JSON。',
         },
         { role: 'user', content: summaryPrompt },
       ],
@@ -532,5 +550,138 @@ ${agentSummaries}
     }
   } catch {
     return fallbackSummary
+  }
+}
+
+// 对比评审解析类型（内部使用）
+type ParsedDiffPointReview = {
+  pointIndex?: number
+  isCore?: boolean
+  isNecessary?: boolean
+  alignsWithKnowledge?: boolean
+  comment?: string
+}
+
+type ParsedComparePayload = {
+  pointReviews?: ParsedDiffPointReview[]
+  overview?: string
+  overallAssessment?: string
+}
+
+const COMPARE_REVIEW_SYSTEM_PROMPT = (agent: Agent) => `${agent.system_prompt}
+
+你必须使用简体中文回复。
+
+你现在正在执行一份教研案对比评审任务，必须严格站在「${agent.name}」的身份与视角说话。
+
+你面前是一份教案修改前后的 diff 对比结果。请逐条评审每个修改点，评估：
+1. 是否为核心修改（isCore）：该修改是否触及教学核心内容
+2. 是否为必要修改（isNecessary）：该修改是否必要、合理
+3. 是否贴合知识点（alignsWithKnowledge）：修改是否有助于知识传递
+4. 类型可能是新增、删除或修改；修改类必须同时比较修改前和修改后。
+
+评审要求：
+- 每个 diff 点都要有独立评审意见（comment），说明修改的合理性
+- 不要只复述 diff 内容，要判断修改背后的教学意图和效果
+- 最后给出整体评价概述（overview）和总体评估（overallAssessment）
+
+只输出 JSON，不要输出 Markdown，不要输出解释，不要输出代码块。
+{
+  "pointReviews": [
+    {
+      "pointIndex": 0,
+      "isCore": true,
+      "isNecessary": true,
+      "alignsWithKnowledge": true,
+      "comment": "对这一修改点的评审意见"
+    }
+  ],
+  "overview": "2-3 句整体概述",
+  "overallAssessment": "总体评估，聚焦修改的整体质量和教学效果"
+}`
+
+function buildDiffContext(diffResult: DiffResult): string {
+  return diffResult.points
+    .filter((p) => p.type !== 'equal')
+    .map((p, i) => {
+      const label = p.type === 'add' ? '[新增]' : p.type === 'delete' ? '[删除]' : '[修改]'
+      if (p.type === 'modify') {
+        return `### Diff ${i}\n类型: ${label}\n修改前:\n${(p.oldText || '').trim()}\n修改后:\n${(p.newText || p.text).trim()}`
+      }
+      return `### Diff ${i}\n类型: ${label}\n内容:\n${p.text.trim()}`
+    })
+    .join('\n\n')
+}
+
+export async function executeCompareReview(
+  agent: Agent,
+  diffResult: DiffResult,
+  onProgress: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<CompareReviewReport> {
+  const diffContext = buildDiffContext(diffResult)
+
+  const rawText = await collectCompletionText(
+    [
+      { role: 'system', content: COMPARE_REVIEW_SYSTEM_PROMPT(agent) },
+      {
+        role: 'user',
+        content: `请对以下教案修改 diff 进行逐条评审。
+
+【修改前文件】${diffResult.oldFileName}
+【修改后文件】${diffResult.newFileName}
+【变更统计】新增 ${diffResult.stats.additions} 处、修改 ${diffResult.stats.modifications} 处、删除 ${diffResult.stats.deletions} 处
+
+【Diff 详情】
+${diffContext}`,
+      },
+    ],
+    signal,
+    onProgress,
+  )
+
+  const parsed = parseJsonCandidate<ParsedComparePayload>(rawText)
+
+  if (!parsed) {
+    const pointReviews: DiffPointReview[] = diffResult.points
+      .filter((p) => p.type !== 'equal')
+      .map((p, i) => ({
+        pointIndex: i,
+        diffType: p.type,
+        oldText: p.type === 'delete' ? p.text : p.type === 'modify' ? p.oldText || '' : '',
+        newText: p.type === 'add' ? p.text : p.type === 'modify' ? p.newText || p.text : '',
+        isCore: false,
+        isNecessary: true,
+        alignsWithKnowledge: true,
+        comment: '评审解析失败，请重试',
+      }))
+
+    return {
+      pointReviews,
+      overview: rawText.trim().slice(0, 300) || '评审解析失败',
+      overallAssessment: '未能生成有效评审，请重试',
+    }
+  }
+
+  const pointReviews: DiffPointReview[] = diffResult.points
+    .filter((p) => p.type !== 'equal')
+    .map((p, i) => {
+      const review = parsed.pointReviews?.find((r) => r.pointIndex === i)
+      return {
+        pointIndex: i,
+        diffType: p.type,
+        oldText: p.type === 'delete' ? p.text : p.type === 'modify' ? p.oldText || '' : '',
+        newText: p.type === 'add' ? p.text : p.type === 'modify' ? p.newText || p.text : '',
+        isCore: review?.isCore ?? false,
+        isNecessary: review?.isNecessary ?? true,
+        alignsWithKnowledge: review?.alignsWithKnowledge ?? true,
+        comment: review?.comment?.trim() || '无评审意见',
+      }
+    })
+
+  return {
+    pointReviews,
+    overview: parsed.overview?.trim() || '评审完成',
+    overallAssessment: parsed.overallAssessment?.trim() || '评审完成',
   }
 }

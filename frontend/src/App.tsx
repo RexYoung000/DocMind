@@ -13,6 +13,7 @@ const AgentEditPage = lazy(() => import('@/pages/agents/AgentEditPage'))
 const ReviewListPage = lazy(() => import('@/pages/reviews/ReviewListPage'))
 const ReviewCreatePage = lazy(() => import('@/pages/reviews/ReviewCreatePage'))
 const ReviewDetailPage = lazy(() => import('@/pages/reviews/ReviewDetailPage'))
+const CompareReportPage = lazy(() => import('@/pages/reviews/CompareReportPage'))
 const ChatListPage = lazy(() => import('@/pages/chat/ChatListPage'))
 const ChatRoomPage = lazy(() => import('@/pages/chat/ChatRoomPage'))
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/reviews" element={<ReviewListPage />} />
             <Route path="/reviews/create" element={<ReviewCreatePage />} />
             <Route path="/reviews/:id" element={<ReviewDetailPage />} />
+            <Route path="/reviews/compare/:reviewId" element={<CompareReportPage />} />
             <Route path="/chat" element={<ChatListPage />} />
             <Route path="/chat/:id" element={<ChatRoomPage />} />
             <Route path="/settings" element={<SettingsPage />} />

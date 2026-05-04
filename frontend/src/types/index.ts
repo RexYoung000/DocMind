@@ -19,6 +19,7 @@ export interface Document {
   summary?: string
   word_count?: number
   doc_metadata?: DocumentMetadata
+  teaching_plan?: TeachingPlanFields
   status: 'uploading' | 'parsing' | 'ready' | 'error'
   review_count: number
   created_at: string
@@ -43,6 +44,27 @@ export interface DocumentMetadata {
   keyPoints?: string[]
   sections?: { title: string; content: string }[]
   wordCount?: number
+}
+
+export interface TeachingPlanFields {
+  subject?: string
+  grade?: string
+  topic?: string
+  duration?: string
+  objectives?: {
+    knowledge?: string
+    process?: string
+    emotion?: string
+  }
+  keyPoints?: string[]
+  difficulties?: string[]
+  teachingProcess?: {
+    stage: string
+    content: string
+    duration?: string
+  }[]
+  boardDesign?: string
+  reflection?: string
 }
 
 export interface AgentPersonality {
@@ -71,7 +93,7 @@ export interface Agent {
   usage_count: number
   color: AgentColor
   category?: AgentCategory
-  focusDimension?: ReviewDimension
+  focusDimension?: ReviewDimension | TeachingDimension
   creation_history?: { role: 'ai' | 'user'; content: string }[]
   last_used_at?: string
   created_at: string
@@ -87,7 +109,7 @@ export interface AgentTemplate {
   tags: string[]
   description: string
   category: AgentCategory
-  focusDimension?: ReviewDimension
+  focusDimension?: ReviewDimension | TeachingDimension
   personality: AgentPersonality
   expertise: string[]
   behavior: {
@@ -104,10 +126,28 @@ export interface Review {
   overall_score?: number
   agent_reviews?: AgentReview[]
   summary?: ReviewSummary
+  compareReport?: CompareReviewReport
   status: 'in_progress' | 'completed'
   created_at: string
   document?: Document
   agents?: Agent[]
+}
+
+export interface DiffPointReview {
+  pointIndex: number
+  diffType: DiffType
+  oldText: string
+  newText: string
+  isCore: boolean
+  isNecessary: boolean
+  alignsWithKnowledge: boolean
+  comment: string
+}
+
+export interface CompareReviewReport {
+  pointReviews: DiffPointReview[]
+  overview: string
+  overallAssessment: string
 }
 
 export interface AgentReview {
@@ -304,6 +344,30 @@ export interface RoleEvent {
 }
 
 export type ProviderMode = 'official' | 'third-party' | 'local'
+
+// 文件对比评审类型
+export type DiffType = 'add' | 'delete' | 'modify' | 'equal'
+
+export interface DiffPoint {
+  type: DiffType
+  text: string
+  oldText?: string
+  newText?: string
+}
+
+export interface DiffResult {
+  oldFileName: string
+  newFileName: string
+  points: DiffPoint[]
+  stats: {
+    additions: number
+    deletions: number
+    modifications: number
+    equalLines: number
+  }
+}
+
+export type ReviewMode = 'single' | 'compare'
 
 export interface ModelConfig {
   providerMode: ProviderMode

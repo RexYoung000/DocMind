@@ -159,7 +159,7 @@ export default function DocumentListPage() {
           <span className="dm-kicker">Document Hub</span>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-gray-900">文档中心</h1>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-gray-600">
-            在这里管理待评审的文档。上传后系统会自动提取结构化信息，后续评审和聊天室都以这里的文档为来源。
+            在这里管理待评审的教研案。上传后系统会自动提取结构化教学信息，后续评审和聊天室都以这里的文档为来源。
           </p>
         </div>
         <Button onClick={() => setShowUpload(true)} className="shrink-0">
@@ -275,7 +275,7 @@ export default function DocumentListPage() {
               {uploading ? (
                 <>
                   <p className="text-sm font-medium text-primary-600">正在解析文档...</p>
-                  <p className="mt-2 text-xs text-gray-500">系统会尽量提取文档的结构化信息。</p>
+                  <p className="mt-2 text-xs text-gray-500">系统会尽量提取课题、目标、重点、难点和教学过程。</p>
                 </>
               ) : (
                 <>
@@ -318,7 +318,7 @@ export default function DocumentListPage() {
             <p className="text-base font-medium text-gray-600">
               {documents.length === 0 ? '还没有文档' : '没有找到匹配的文档'}
             </p>
-            <p className="mt-2 text-sm text-gray-400">上传文档后，就可以发起评审和聊天室研讨。</p>
+            <p className="mt-2 text-sm text-gray-400">上传第一份教研案后，就可以继续发起评审和聊天室研讨。</p>
             <Button onClick={() => setShowUpload(true)} className="mt-5">
               <Upload className="h-4 w-4" />
               上传文档
@@ -336,7 +336,7 @@ export default function DocumentListPage() {
               <div key={document.id} className="group relative">
                 <Link to={`/documents/${document.id}`} className="absolute inset-0 z-0 rounded-[28px]" />
 
-                <Card className="dm-panel-hover relative z-[1] h-full rounded-[28px]">
+                <Card className="dm-panel-hover pointer-events-none relative z-[1] h-full rounded-[28px]">
                   <CardContent className="pointer-events-none flex h-full flex-col p-5">
                     <div className="mb-4 flex items-start justify-between gap-3">
                       <div className={cn('rounded-2xl p-3 shadow-sm', fileColor)}>
