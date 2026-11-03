@@ -67,7 +67,7 @@
 ## 4. Review Animation DNA
 
 评审过程的动效基线来自视频参考的“任务推进卡”模式，详见：
-[review-animation-breakdown.md](/D:/vibe%20coding/DocMind/docs/review-animation-breakdown.md)
+[review-animation-breakdown.md](review-animation-breakdown.md)
 
 ### design_system.motion
 

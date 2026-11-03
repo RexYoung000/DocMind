@@ -1,14 +1,14 @@
 # Review Animation Breakdown
 
 参考视频：
-[帮小忙-在线录屏.mp4](C:/Users/rex_y/Downloads/%E5%B8%AE%E5%B0%8F%E5%BF%99-%E5%9C%A8%E7%BA%BF%E5%BD%95%E5%B1%8F.mp4)
+`C:/Users/rex_y/Downloads/帮小忙-在线录屏.mp4`（源文件在 Windows 机器上，本机不可用；原为绝对路径链接，已改为纯文本记录）
 
-抽帧参考：
-- [frame_00_00.00s.png](/D:/vibe%20coding/DocMind/.tmp/review-video-frames/frame_00_00.00s.png)
-- [frame_01_02.00s.png](/D:/vibe%20coding/DocMind/.tmp/review-video-frames/frame_01_02.00s.png)
-- [frame_02_04.00s.png](/D:/vibe%20coding/DocMind/.tmp/review-video-frames/frame_02_04.00s.png)
-- [frame_03_06.00s.png](/D:/vibe%20coding/DocMind/.tmp/review-video-frames/frame_03_06.00s.png)
-- [frame_04_08.00s.png](/D:/vibe%20coding/DocMind/.tmp/review-video-frames/frame_04_08.00s.png)
+抽帧参考（临时目录 `.tmp/review-video-frames/`，制作完成后已清理，本机不再保留）：
+- `frame_00_00.00s.png`
+- `frame_01_02.00s.png`
+- `frame_02_04.00s.png`
+- `frame_03_06.00s.png`
+- `frame_04_08.00s.png`
 
 ## 1. Core Observation
 
